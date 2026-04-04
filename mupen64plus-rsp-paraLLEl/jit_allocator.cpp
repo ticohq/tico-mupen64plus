@@ -1,6 +1,8 @@
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#elif defined(HAVE_LIBNX)
+#include <switch.h>
 #else
 #include <unistd.h>
 #include <sys/mman.h>
@@ -14,7 +16,9 @@ namespace RSP
 {
 namespace JIT
 {
-#ifdef IOS // iOS/tvOS is 64bit but does not allow an infinite amount of VA space
+#if defined(HAVE_LIBNX)
+static constexpr bool huge_va = false;
+#elif defined(IOS) // iOS/tvOS is 64bit but does not allow an infinite amount of VA space
 static constexpr bool huge_va = false;
 #else
 static constexpr bool huge_va = std::numeric_limits<size_t>::max() > 0x100000000ull;
@@ -28,6 +32,12 @@ Allocator::~Allocator()
 #ifdef _WIN32
 	for (auto &block : blocks)
 		VirtualFree(block.code, 0, MEM_RELEASE);
+#elif defined(HAVE_LIBNX)
+	for (auto &block : blocks)
+	{
+		if (block.code)
+			jitClose(&block.jit);
+	}
 #else
 	for (auto &block : blocks)
 		munmap(block.code, block.size);
@@ -36,7 +46,9 @@ Allocator::~Allocator()
 
 static size_t align_page(size_t offset)
 {
-#if defined(__APPLE__) && defined(__aarch64__)
+#if defined(HAVE_LIBNX)
+	size_t pagesize = 0x1000 - 1;
+#elif defined(__APPLE__) && defined(__aarch64__)
 	size_t pagesize = sysconf(_SC_PAGESIZE) - 1;
 #else
 	size_t pagesize = 4095;
@@ -48,6 +60,10 @@ static bool commit_read_write(void *ptr, size_t size)
 {
 #ifdef _WIN32
 	return VirtualAlloc(ptr, size, MEM_COMMIT, PAGE_READWRITE) == ptr;
+#elif defined(HAVE_LIBNX)
+	(void)ptr;
+	(void)size;
+	return true;
 #else
 	return mprotect(ptr, size, PROT_READ | PROT_WRITE) == 0;
 #endif
@@ -58,6 +74,10 @@ static bool commit_execute(void *ptr, size_t size)
 #ifdef _WIN32
 	DWORD old_protect;
 	return VirtualProtect(ptr, align_page(size), PAGE_EXECUTE, &old_protect) != 0;
+#elif defined(HAVE_LIBNX)
+	(void)ptr;
+	(void)size;
+	return true;
 #else
 	return mprotect(ptr, size, PROT_EXEC) == 0;
 #endif
@@ -65,7 +85,41 @@ static bool commit_execute(void *ptr, size_t size)
 
 bool Allocator::commit_code(void *code, size_t size)
 {
+#if defined(HAVE_LIBNX)
+	auto *rw_code = static_cast<uint8_t *>(code);
+	for (auto &block : blocks)
+	{
+		if (rw_code < block.code || rw_code >= (block.code + block.size))
+			continue;
+
+		if (block.jit.type != JitType_CodeMemory)
+			return R_SUCCEEDED(jitTransitionToExecutable(&block.jit));
+
+		auto *rx_code = block.rx_code + (rw_code - block.code);
+		armDCacheFlush(rw_code, size);
+		armICacheInvalidate(rx_code, size);
+		block.jit.is_executable = true;
+		return true;
+	}
+	return false;
+#else
 	return commit_execute(code, size);
+#endif
+}
+
+void *Allocator::get_executable_code(void *code) const
+{
+#if defined(HAVE_LIBNX)
+	auto *ptr = static_cast<uint8_t *>(code);
+	for (const auto &block : blocks)
+	{
+		if (ptr >= block.code && ptr < (block.code + block.size))
+			return block.rx_code + (ptr - block.code);
+		if (ptr >= block.rx_code && ptr < (block.rx_code + block.size))
+			return ptr;
+	}
+#endif
+	return code;
 }
 
 void *Allocator::allocate_code(size_t size)
@@ -94,10 +148,16 @@ void *Allocator::allocate_code(size_t size)
 		return nullptr;
 
 	void *ret = block->code + block->offset;
-	block->offset += size;
+
+#if defined(HAVE_LIBNX)
+	if (block->jit.type != JitType_CodeMemory && block->jit.is_executable &&
+	    R_FAILED(jitTransitionToWritable(&block->jit)))
+		return nullptr;
+#endif
 
 	if (!commit_read_write(ret, size))
 		return nullptr;
+	block->offset += size;
 	return ret;
 }
 
@@ -106,6 +166,29 @@ Allocator::Block Allocator::reserve_block(size_t size)
 	Block block;
 #ifdef _WIN32
 	block.code = static_cast<uint8_t *>(VirtualAlloc(nullptr, size, MEM_RESERVE, PAGE_READWRITE));
+	block.size = size;
+	return block;
+#elif defined(HAVE_LIBNX)
+	if (R_FAILED(jitCreate(&block.jit, size)))
+		return block;
+	if (R_FAILED(jitTransitionToWritable(&block.jit)))
+	{
+		jitClose(&block.jit);
+		block.jit = {};
+		return block;
+	}
+
+	block.code = static_cast<uint8_t *>(jitGetRwAddr(&block.jit));
+	block.rx_code = static_cast<uint8_t *>(jitGetRxAddr(&block.jit));
+	if (!block.code || !block.rx_code)
+	{
+		jitClose(&block.jit);
+		block.jit = {};
+		block.code = nullptr;
+		block.rx_code = nullptr;
+		return block;
+	}
+
 	block.size = size;
 	return block;
 #else

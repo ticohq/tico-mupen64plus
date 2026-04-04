@@ -458,6 +458,10 @@ endif
 	CXXFLAGS += -I$(RSPDIR_PARALLEL)/arch/$(PARALLEL_RSP_ARCH)/rsp -I$(RSPDIR_PARALLEL)/lightning/include
 	CFLAGS += -DHAVE_PARALLEL_RSP -DPARALLEL_INTEGRATION -I$(RSPDIR_PARALLEL)/lightning/include
 	CXXFLAGS += -DHAVE_PARALLEL_RSP -DPARALLEL_INTEGRATION
+ifeq ($(platform), libnx)
+	CFLAGS += -I$(ROOT_DIR)/switch
+	CXXFLAGS += -I$(ROOT_DIR)/switch
+endif
 endif
 
 ifneq (,$(findstring win,$(platform)))

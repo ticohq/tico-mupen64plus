@@ -445,10 +445,47 @@ static void emu_step_initialize(void)
     plugin_connect_all();
 }
 
+#ifdef HAVE_LIBNX
+static void pin_current_thread_to_core(int core, const char *label)
+{
+    Result rc;
+
+    if (core < 0 || core > 2)
+        return;
+
+    rc = svcSetThreadCoreMask(CUR_THREAD_HANDLE, core, 1u << core);
+    if (R_FAILED(rc))
+    {
+        if (log_cb)
+            log_cb(RETRO_LOG_WARN, CORE_NAME ": failed to pin %s thread to core %d (rc=0x%x)\n", label, core, rc);
+    }
+    else if (log_cb)
+    {
+        log_cb(RETRO_LOG_INFO, CORE_NAME ": pinned %s thread to core %d\n", label, core);
+    }
+}
+
+static void pin_emulation_thread_for_switch(void)
+{
+    if (current_rsp_type == RSP_PLUGIN_PARALLEL)
+    {
+        pin_current_thread_to_core(1, "emulation (Parallel RSP)");
+    }
+    else if (current_rdp_type == RDP_PLUGIN_GLIDEN64 && EnableThreadedRenderer)
+    {
+        pin_current_thread_to_core(0, "emulation");
+    }
+}
+#endif
+
 static void* EmuThreadFunction(void* param)
 {
     uint32_t netplay_port = 0;
     uint16_t netplay_player = 1;
+
+#ifdef HAVE_LIBNX
+    pin_emulation_thread_for_switch();
+#endif
 
     initializing = false;
 

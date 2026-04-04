@@ -12,3 +12,6 @@ asm_defines_gas.h
 .vscode/ipch/*
 .vscode/c_cpp_properties.json
 linker.list
+build_tico
+*.a
+build_tico

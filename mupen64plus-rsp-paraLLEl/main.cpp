@@ -316,11 +316,11 @@ static void test()
 	void *code = alloc.allocate_code(code_size);
 	jit_set_code(code, code_size);
 
-	auto *func = reinterpret_cast<int (*)(int, int)>(jit_emit());
+	auto *func = reinterpret_cast<int (*)(int, int)>(alloc.get_executable_code(jit_emit()));
 
 	jit_clear_state();
 	jit_destroy_state();
-	RSP::JIT::Allocator::commit_code(code, code_size);
+	alloc.commit_code(code, code_size);
 	int ret = func(10, 20);
 	printf("%d\n", ret);
 }

@@ -211,12 +211,14 @@ else ifeq ($(platform), libnx)
    PIC = 1
    TARGET := $(TARGET_NAME)_libretro_$(platform).a
    CPUOPTS := -g -march=armv8-a+crc -mtune=cortex-a57 -mtp=soft -mcpu=cortex-a57+crc+fp+simd
-   PLATCFLAGS = -O3 -ffast-math -funsafe-math-optimizations -fPIE -I$(PORTLIBS)/include/ -I$(LIBNX)/include/ -ffunction-sections -fdata-sections -ftls-model=local-exec -specs=$(LIBNX)/switch.specs
+   PLATCFLAGS = -O3 -ffast-math -funsafe-math-optimizations -fPIE -I$(PORTLIBS)/include/ -I$(PORTLIBS)/include/freetype2 -I$(LIBNX)/include/ -ffunction-sections -fdata-sections -ftls-model=local-exec -specs=$(LIBNX)/switch.specs
    PLATCFLAGS += $(INCLUDE) -D__SWITCH__=1 -DSWITCH -DHAVE_LIBNX -D_GLIBCXX_USE_C99_MATH_TR1 -D_LDBL_EQ_DBL -funroll-loops #-DM64P_NETPLAY
-   CXXFLAGS += -fno-rtti -std=gnu++11
+   CXXFLAGS += -fno-rtti -std=gnu++14
    COREFLAGS += -DOS_LINUX -DEGL
    GLES = 0
    WITH_DYNAREC = aarch64
+   HAVE_PARALLEL_RSP = 1
+   LLE = 1
    STATIC_LINKING = 1
 
 # Jetson Xavier NX
@@ -646,7 +648,7 @@ CPUOPTS += -fcommon
 
 # set C/C++ standard to use
 CFLAGS += -std=gnu11 -D_CRT_SECURE_NO_WARNINGS -Wno-discarded-qualifiers
-CXXFLAGS += -std=gnu++11 -D_CRT_SECURE_NO_WARNINGS
+CXXFLAGS += -std=gnu++14 -D_CRT_SECURE_NO_WARNINGS
 
 ifeq ($(HAVE_LTCG),1)
    CPUFLAGS += -flto

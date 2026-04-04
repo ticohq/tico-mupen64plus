@@ -1,3 +1,7 @@
+/// @file mman.h
+/// @brief POSIX mmap/mprotect/munmap shims for Nintendo Switch
+/// @details Routes JIT allocations through libnx Jit API (RW/RX dual-mapping)
+///          and MAP_ANONYMOUS requests through memalign.
 #ifndef MMAN_H
 #define MMAN_H
 
@@ -11,7 +15,6 @@ extern "C"
 #include <stdint.h>
 #include <malloc.h>
 #include <switch.h>
-#include <stdlib.h>
 
 #define PROT_READ 0b001
 #define PROT_WRITE 0b010
@@ -21,37 +24,72 @@ extern "C"
 #define MAP_ANONYMOUS 0x20
 
 #define MAP_FAILED ((void *)-1)
-void* ptr_rw = NULL;
 
+Jit mupen_jit;
+bool mupen_jit_active = false;
+void* mupen_jit_rx_addr = NULL;
+
+/// @brief Allocate memory with optional JIT dual-mapping
+/// @details MAP_ANONYMOUS → memalign, otherwise → libnx Jit (RW/RX pair)
 static inline void *mmap(void *addr, size_t len, int prot, int flags, int fd, off_t offset)
 {
     (void)fd;
     (void)offset;
 
     size_t size = (len + 0xFFF) &~ 0xFFF;
-	ptr_rw = virtmemReserve(size);
-    if (R_SUCCEEDED(svcMapProcessMemory(ptr_rw, envGetOwnProcessHandle(), (u64)addr, size)))
-    {
-        return ptr_rw;
+
+    if (flags & MAP_ANONYMOUS) {
+        void *ptr = memalign(0x1000, size);
+        if (ptr) memset(ptr, 0, size);
+        return ptr ? ptr : MAP_FAILED;
     }
-    else
+
+    if (R_SUCCEEDED(jitCreate(&mupen_jit, size)))
     {
-        printf("[NXJIT]: Jit failed!\n");
-        return (void*)-1;
+        if (R_SUCCEEDED(jitTransitionToWritable(&mupen_jit)))
+        {
+            mupen_jit_active = true;
+            mupen_jit_rx_addr = jitGetRxAddr(&mupen_jit);
+            return jitGetRwAddr(&mupen_jit);
+        }
+        jitClose(&mupen_jit);
     }
+
+    printf("[NXJIT]: Jit failed!\n");
+    return MAP_FAILED;
 }
 
+/// @brief Transition JIT buffer between writable and executable states
 static inline int mprotect(void *addr, size_t len, int prot)
 {
+    if (!mupen_jit_active) return 0;
+
+    if (prot & PROT_EXEC)
+        jitTransitionToExecutable(&mupen_jit);
+    else if ((prot & PROT_WRITE) || (prot & PROT_READ))
+        jitTransitionToWritable(&mupen_jit);
+
     return 0;
 }
 
+/// @brief Free JIT or memalign'd memory
 static inline int munmap(void *addr, size_t len)
 {
-    size_t size = (len + 0xFFF) &~ 0xFFF;
-    svcUnmapProcessMemory(ptr_rw, envGetOwnProcessHandle(), (u64)addr, size);
-    printf("[NXJIT]: Jit closed\n");
-    
+    if (mupen_jit_active)
+    {
+        void* ptr_rw = jitGetRwAddr(&mupen_jit);
+        if (addr == ptr_rw || addr == mupen_jit_rx_addr)
+        {
+            jitClose(&mupen_jit);
+            mupen_jit_active = false;
+            mupen_jit_rx_addr = NULL;
+            return 0;
+        }
+    }
+
+    if (addr && addr != MAP_FAILED)
+        free(addr);
+
     return 0;
 }
 

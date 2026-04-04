@@ -431,9 +431,9 @@ void CPU::init_jit_thunks()
 		abort();
 	jit_set_code(thunk_code, code_size);
 
-	thunks.enter_frame = reinterpret_cast<int (*)(void *)>(jit_emit());
-	thunks.enter_thunk = jit_address(entry_label);
-	thunks.return_thunk = jit_address(return_label);
+	thunks.enter_frame = reinterpret_cast<int (*)(void *)>(allocator.get_executable_code(jit_emit()));
+	thunks.enter_thunk = static_cast<Func>(allocator.get_executable_code(jit_address(entry_label)));
+	thunks.return_thunk = static_cast<Func>(allocator.get_executable_code(jit_address(return_label)));
 
 	//printf(" === DISASM ===\n");
 	//jit_disassemble();
@@ -441,7 +441,7 @@ void CPU::init_jit_thunks()
 	//printf(" === END DISASM ===\n");
 	jit_destroy_state();
 
-	if (!Allocator::commit_code(thunk_code, code_size))
+	if (!allocator.commit_code(thunk_code, code_size))
 		abort();
 }
 
@@ -1901,7 +1901,7 @@ Func CPU::jit_region(uint64_t hash, unsigned pc_word, unsigned instruction_count
 		abort();
 	jit_set_code(block_code, code_size);
 
-	auto ret = reinterpret_cast<Func>(jit_emit());
+	auto ret = reinterpret_cast<Func>(allocator.get_executable_code(jit_emit()));
 
 #ifdef TRACE_DISASM
 	printf(" === DISASM ===\n");
@@ -1912,7 +1912,7 @@ Func CPU::jit_region(uint64_t hash, unsigned pc_word, unsigned instruction_count
 	jit_clear_state();
 	jit_destroy_state();
 
-	if (!Allocator::commit_code(block_code, code_size))
+	if (!allocator.commit_code(block_code, code_size))
 		abort();
 	return ret;
 }
