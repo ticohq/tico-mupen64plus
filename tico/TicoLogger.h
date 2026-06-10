@@ -2,6 +2,7 @@
 /// @brief Category-filtered logging system with file output on Switch
 #pragma once
 #include <cstdarg>
+#include <cstdint>
 #include <cstdio>
 #include <string>
 #include <unordered_map>
@@ -63,7 +64,7 @@ public:
     if (!m_file) {
       mkdir("sdmc:/tico", 0777);
       mkdir("sdmc:/tico/debug", 0777);
-      m_file = fopen("sdmc:/tico/debug/mupen64plus.txt", "a");
+      m_file = fopen(kSwitchLogPath, "a");
     }
     if (!m_file)
       return;
@@ -91,6 +92,19 @@ public:
 
   /// @brief Set minimum log level threshold
   void SetMinLevel(Level level) { m_minLevel = level; }
+
+  void StartNewLogFile() {
+#if defined(__SWITCH__) && !defined(DISABLE_LOGGING)
+    ResetLogFile();
+    mkdir("sdmc:/tico", 0777);
+    mkdir("sdmc:/tico/debug", 0777);
+    m_file = fopen(kSwitchLogPath, "w");
+    if (m_file) {
+      fprintf(m_file, "=== Tico mupen64plus log start ===\n");
+      fflush(m_file);
+    }
+#endif
+  }
 
   void ResetLogFile() {
 #ifdef __SWITCH__
@@ -123,25 +137,32 @@ private:
     InitializeCategories();
   }
 
+  static constexpr const char *kSwitchLogPath =
+      "sdmc:/tico/debug/mupen64plus.txt";
+
   void InitializeCategories() {
 #ifdef _DEBUG
     m_categoryStates["EGL"] = true;
+    m_categoryStates["VK"] = true;
     m_categoryStates["CORE"] = true;
-    m_categoryStates["RENDER"] = false;
+    m_categoryStates["RENDER"] = true;
     m_categoryStates["INPUT"] = true;
     m_categoryStates["AUDIO"] = true;
     m_categoryStates["LOADER"] = true;
     m_categoryStates["EMULATOR"] = true;
     m_categoryStates["HOME"] = true;
+    m_categoryStates["OVERLAY"] = true;
 #else
     m_categoryStates["EGL"] = true;
+    m_categoryStates["VK"] = true;
     m_categoryStates["CORE"] = true;
-    m_categoryStates["RENDER"] = false;
+    m_categoryStates["RENDER"] = true;
     m_categoryStates["INPUT"] = false;
     m_categoryStates["AUDIO"] = false;
     m_categoryStates["LOADER"] = true;
     m_categoryStates["EMULATOR"] = true;
     m_categoryStates["HOME"] = true;
+    m_categoryStates["OVERLAY"] = true;
 #endif
   }
 

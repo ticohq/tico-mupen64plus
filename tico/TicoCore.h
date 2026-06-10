@@ -41,7 +41,7 @@ struct RANotification {
     std::string title;
     std::string description;
     std::string badge_name;     // badge identifier or "ra_icon" for session start
-    unsigned int textureId = 0; // GL texture for the badge (0 = no badge)
+    uintptr_t textureId = 0;    // GL texture id or Vulkan descriptor handle
     float timer = 0.0f;
     float duration = 4.0f; // total display time
     float slideIn = 0.4f;  // slide-in duration
@@ -216,11 +216,11 @@ public:
     void PushRANotification(const std::string& title, const std::string& desc,
                            const std::string& badge = "");
 
-    // RA badge cache (badge_name -> GL texture)
-    std::map<std::string, unsigned int> m_raBadgeCache;
-    unsigned int m_raIconTexture = 0;        // ra.svg icon
+    // RA badge cache (badge_name -> GL texture id or Vulkan descriptor handle)
+    std::map<std::string, uintptr_t> m_raBadgeCache;
+    uintptr_t m_raIconTexture = 0;            // ra.svg icon
     void LoadRAIcon();                        // load ra.svg as texture
-    unsigned int GetRABadgeTexture(const std::string& badge_name);
+    uintptr_t GetRABadgeTexture(const std::string& badge_name);
     void DownloadAndCacheBadge(const std::string& badge_name); // runs on worker
     void PreloadRABadges();                   // called after game identification
     std::vector<std::pair<std::string, std::vector<unsigned char>>> m_raPendingBadgeUploads;

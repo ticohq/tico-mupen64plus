@@ -14,4 +14,4 @@ asm_defines_gas.h
 linker.list
 build_tico
 *.a
-build_tico
+RMG

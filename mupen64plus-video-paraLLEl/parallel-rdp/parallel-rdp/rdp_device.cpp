@@ -28,6 +28,13 @@
 #include <emmintrin.h>
 #endif
 
+#ifdef __SWITCH__
+// Minimal libnx declarations to pin the timeline worker thread without pulling
+// <switch.h> (whose global-namespace typedefs clash with Granite headers).
+extern "C" uint32_t svcSetThreadCoreMask(uint32_t handle, int32_t preferred_core, uint64_t affinity_mask);
+#define TICO_CUR_THREAD_HANDLE 0xFFFF8000u
+#endif
+
 #ifndef PARALLEL_RDP_SHADER_DIR
 #include "shaders/slangmosh.hpp"
 #endif
@@ -1230,6 +1237,22 @@ static void masked_memcpy(uint8_t * __restrict dst,
 
 void CommandProcessor::FenceExecutor::perform_work(CoherencyOperation &work)
 {
+#ifdef __SWITCH__
+	// This worker thread does the GPU fence waits and the RDRAM coherency memcpys
+	// (heavy here: NVK lacks VK_EXT_external_memory_host, so RDRAM is mirrored by CPU
+	// copy every frame). It is created from the emulation thread and inherits its core
+	// (core 1 on the libretro Switch path), where it competes with the emulator for CPU
+	// on every SyncFull. Pin it to core 0, which is otherwise idle in that layout
+	// (emu = core 1, audio = core 2).
+	{
+		static thread_local bool pinned_to_core0 = false;
+		if (!pinned_to_core0)
+		{
+			svcSetThreadCoreMask(TICO_CUR_THREAD_HANDLE, 0, 1u << 0);
+			pinned_to_core0 = true;
+		}
+	}
+#endif
 	if (work.fence)
 		work.fence->wait();
 

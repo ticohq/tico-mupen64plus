@@ -21,6 +21,9 @@
 #include <thread>
 #include "rc_client.h"
 #include "deps/stb/stb_image.h"
+#ifdef TICO_VULKAN_OVERLAY
+#include "TicoVulkan.h"
+#endif
 
 extern "C"
 {
@@ -33,7 +36,9 @@ extern "C"
 }
 
 #ifdef __SWITCH__
+#ifndef TICO_VULKAN_OVERLAY
 #include <glad/glad.h>
+#endif
 #include <switch.h>
 
 /// @brief Switch vibration handles and state
@@ -52,11 +57,19 @@ static const char *tico_get_forced_core_option_value(const char *key)
 
     if (strcmp(key, "mupen64plus-rdp-plugin") == 0 ||
         strcmp(key, "mupen64plus-next-rdp-plugin") == 0)
+#ifdef TICO_VULKAN_OVERLAY
+        return "parallel";
+#else
         return "gliden64";
+#endif
 
     if (strcmp(key, "mupen64plus-rsp-plugin") == 0 ||
         strcmp(key, "mupen64plus-next-rsp-plugin") == 0)
+#ifdef TICO_VULKAN_OVERLAY
+        return "parallel";
+#else
         return "hle";
+#endif
 
     if (strcmp(key, "mupen64plus-cpucore") == 0 ||
         strcmp(key, "mupen64plus-next-cpucore") == 0)
@@ -189,6 +202,26 @@ bool WriteSaveFile(const std::string &path, const uint8_t *source, size_t size, 
 
     tico_debug_log("Saved %s to %s", label, path.c_str());
     return true;
+}
+
+uintptr_t CreateUiTextureRGBA(const unsigned char *data, int width, int height)
+{
+    if (!data || width <= 0 || height <= 0)
+        return 0;
+
+#ifdef TICO_VULKAN_OVERLAY
+    return (uintptr_t)TicoVulkan::CreateOverlayTextureRGBA(
+        data, (uint32_t)width, (uint32_t)height);
+#else
+    unsigned int tex = 0;
+    glGenTextures(1, &tex);
+    glBindTexture(GL_TEXTURE_2D, tex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    return tex;
+#endif
 }
 
 bool LoadLegacySRMFallback(const std::string &path,
@@ -650,7 +683,9 @@ TicoCore::~TicoCore()
 
     if (m_initialized)
     {
+#ifndef TICO_VULKAN_OVERLAY
         glFinish(); // drain any pending GPU commands before CoreShutdown
+#endif
         tico_debug_log("Calling retro_deinit...");
         retro_deinit();
         tico_debug_log("retro_deinit done");
@@ -764,7 +799,18 @@ bool TicoCore::Init()
     retro_init();
     tico_debug_log("retro_init done");
 
+    // === TEMPORARY BISECTION TOGGLE ===
+    // Set to 1 to run the emulator WITHOUT RetroAchievements. With the client never
+    // created, the login (guarded by m_rcClient at ~L1111), rc_client_do_frame (~L1266),
+    // the RA callback queue, and badge uploads all become no-ops automatically.
+    // Flip back to 0 to restore RetroAchievements.
+#define TICO_DISABLE_RA 1
+
     // Initialize RetroAchievements
+#if TICO_DISABLE_RA
+    m_rcClient = nullptr;
+    tico_debug_log("RA: DISABLED (TICO_DISABLE_RA=1) — emulator-only bisection build");
+#else
     m_rcClient = rc_client_create(RAReadMemory, RAServerCall);
     if (m_rcClient) {
         tico_debug_log("RA: Client created");
@@ -805,6 +851,7 @@ bool TicoCore::Init()
         });
         StartRAWorker();
     }
+#endif // TICO_DISABLE_RA
 
     // Set all callbacks
     retro_set_video_refresh(VideoRefreshCallback);
@@ -836,6 +883,9 @@ void TicoCore::SetHWRenderContext(SDL_Window *window, EGLContext mainCtx, EGLCon
 
 bool TicoCore::InitEGLDualContext()
 {
+#ifdef TICO_VULKAN_OVERLAY
+    return false;
+#else
     m_eglDisplay = eglGetCurrentDisplay();
     EGLContext currentCtx = eglGetCurrentContext();
 
@@ -894,6 +944,7 @@ bool TicoCore::InitEGLDualContext()
              m_frameTexture, fboW, fboH, m_fbo);
 
     return true;
+#endif
 }
 
 void TicoCore::BindHWContext(bool enable)
@@ -907,7 +958,9 @@ void TicoCore::DestroyHWRenderContext()
         return;
 
     tico_debug_log("Calling context_destroy...");
+#ifndef TICO_VULKAN_OVERLAY
     glFinish();
+#endif
     s_hwRenderCallback.context_destroy();
     tico_debug_log("context_destroy done");
 
@@ -1008,6 +1061,26 @@ bool TicoCore::LoadGame(const std::string &path)
     if (m_hwRender)
     {
         tico_debug_log("Initializing HW render context...");
+#ifdef TICO_VULKAN_OVERLAY
+        if (TicoVulkan::CreateDeviceAndSwapchain())
+        {
+            if (s_hwRenderCallback.context_reset)
+            {
+                tico_debug_log("Calling Vulkan context_reset...");
+                s_hwRenderCallback.context_reset();
+                tico_debug_log("Vulkan context_reset done");
+            }
+            else
+            {
+                tico_debug_log("WARNING: No Vulkan context_reset callback!");
+            }
+        }
+        else
+        {
+            tico_debug_log("ERROR: TicoVulkan::CreateDeviceAndSwapchain failed");
+            return false;
+        }
+#else
         if (InitEGLDualContext())
         {
             if (s_hwRenderCallback.context_reset)
@@ -1025,6 +1098,7 @@ bool TicoCore::LoadGame(const std::string &path)
         {
             tico_debug_log("ERROR: InitEGLDualContext failed");
         }
+#endif
     }
     else
     {
@@ -1091,6 +1165,7 @@ void TicoCore::UnloadGame()
 
     m_gameLoaded = false;
 
+#ifndef TICO_VULKAN_OVERLAY
     // Drain stale GL errors
     while (glGetError() != GL_NO_ERROR) {}
 
@@ -1151,6 +1226,7 @@ void TicoCore::UnloadGame()
     while (glGetError() != GL_NO_ERROR) {}
 
     tico_debug_log("UnloadGame GL cleanup complete");
+#endif
 }
 
 //==============================================================================
@@ -1160,7 +1236,22 @@ void TicoCore::UnloadGame()
 void TicoCore::RunFrame()
 {
     if (!m_gameLoaded || m_paused)
+    {
+        static uint32_t skippedFrameLogCount = 0;
+        if (skippedFrameLogCount < 5)
+        {
+            tico_debug_log("RunFrame skipped: gameLoaded=%d paused=%d",
+                           m_gameLoaded ? 1 : 0,
+                           m_paused ? 1 : 0);
+            skippedFrameLogCount++;
+        }
         return;
+    }
+
+    static uint64_t runFrameCount = 0;
+    runFrameCount++;
+    if (runFrameCount <= 8 || (runFrameCount % 120) == 0)
+        tico_debug_log("retro_run #%llu starting", (unsigned long long)runFrameCount);
 
     // Process RA callbacks on the main thread
     {
@@ -1181,16 +1272,26 @@ void TicoCore::RunFrame()
 
     retro_run();
 
+    if (runFrameCount <= 8 || (runFrameCount % 120) == 0)
+        tico_debug_log("retro_run #%llu returned", (unsigned long long)runFrameCount);
+
     if (m_rcClient && m_gameLoaded) {
         rc_client_do_frame(m_rcClient);
     }
 
+#ifndef TICO_VULKAN_OVERLAY
     // Unbind core's FBO so subsequent rendering targets the default framebuffer
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
+#endif
 }
 
 void TicoCore::ResizeFBO(int width, int height)
 {
+#ifdef TICO_VULKAN_OVERLAY
+    (void)width;
+    (void)height;
+    return;
+#else
     if (m_frameTexture == 0 || m_fbo == 0)
         return;
 
@@ -1224,6 +1325,7 @@ void TicoCore::ResizeFBO(int width, int height)
     }
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
+#endif
 }
 
 void TicoCore::Reset()
@@ -1273,8 +1375,10 @@ void TicoCore::SaveState(const std::string &path)
         return;
 
     BindHWContext(true);
+#ifndef TICO_VULKAN_OVERLAY
     glFinish();
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
+#endif
 
     size_t size = retro_serialize_size();
     if (size == 0)
@@ -1287,8 +1391,10 @@ void TicoCore::SaveState(const std::string &path)
     std::vector<uint8_t> data(size);
     bool success = retro_serialize(data.data(), size);
 
+#ifndef TICO_VULKAN_OVERLAY
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glFinish();
+#endif
     BindHWContext(false);
 
     if (success)
@@ -1342,8 +1448,10 @@ void TicoCore::LoadState(const std::string &path)
     fclose(fp);
 
     BindHWContext(true);
+#ifndef TICO_VULKAN_OVERLAY
     glFinish();
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
+#endif
 
     // Flush audio
     if (m_audioFlushCallback)
@@ -1354,8 +1462,10 @@ void TicoCore::LoadState(const std::string &path)
 
     bool success = retro_unserialize(data.data(), fileSize);
 
+#ifndef TICO_VULKAN_OVERLAY
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glFinish();
+#endif
     BindHWContext(false);
 
     if (success)
@@ -1567,6 +1677,20 @@ bool TicoCore::HandleEnvironment(unsigned cmd, void *data)
     {
         auto *hw = (struct retro_hw_render_callback *)data;
         
+#ifdef TICO_VULKAN_OVERLAY
+        if (hw->context_type != RETRO_HW_CONTEXT_VULKAN)
+        {
+            tico_debug_log("ENV: SET_HW_RENDER rejected - expected Vulkan, got %d", hw->context_type);
+            return false;
+        }
+
+        s_hwRenderCallback = *hw;
+        m_hwRender = true;
+
+        tico_debug_log("ENV: SET_HW_RENDER accepted - Vulkan version=%d.%d",
+                 hw->version_major, hw->version_minor);
+        return true;
+#else
         s_hwRenderCallback = *hw;
         m_hwRender = true;
 
@@ -1584,7 +1708,48 @@ bool TicoCore::HandleEnvironment(unsigned cmd, void *data)
         tico_debug_log("ENV: SET_HW_RENDER accepted - context_type=%d, version=%d.%d",
                  hw->context_type, hw->version_major, hw->version_minor);
         return true;
+#endif
     }
+
+#ifdef TICO_VULKAN_OVERLAY
+    case RETRO_ENVIRONMENT_GET_PREFERRED_HW_RENDER:
+    {
+        *(unsigned *)data = RETRO_HW_CONTEXT_VULKAN;
+        return true;
+    }
+
+    case RETRO_ENVIRONMENT_GET_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE_SUPPORT:
+        return true;
+
+    case RETRO_ENVIRONMENT_SET_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE:
+    {
+        const auto *iface =
+            (const retro_hw_render_context_negotiation_interface_vulkan *)data;
+        if (!iface ||
+            iface->interface_type != RETRO_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE_VULKAN)
+        {
+            tico_debug_log("ENV: Vulkan negotiation interface rejected");
+            return false;
+        }
+        TicoVulkan::SetNegotiationInterface(iface);
+        tico_debug_log("ENV: Vulkan negotiation interface registered (ver=%u)",
+                       iface->interface_version);
+        return true;
+    }
+
+    case RETRO_ENVIRONMENT_GET_HW_RENDER_INTERFACE:
+    {
+        const auto *hwIface = TicoVulkan::GetHwRenderInterface();
+        if (!hwIface)
+        {
+            tico_debug_log("ENV: GET_HW_RENDER_INTERFACE before Vulkan ready");
+            return false;
+        }
+        *(const retro_hw_render_interface **)data =
+            reinterpret_cast<const retro_hw_render_interface *>(hwIface);
+        return true;
+    }
+#endif
 
     case RETRO_ENVIRONMENT_GET_VARIABLE:
     {
@@ -1777,6 +1942,19 @@ bool TicoCore::HandleEnvironment(unsigned cmd, void *data)
 void TicoCore::HandleVideoRefresh(const void *data, unsigned width,
                                   unsigned height, size_t pitch)
 {
+#ifdef TICO_VULKAN_OVERLAY
+    (void)data;
+    (void)pitch;
+    if (width && height)
+    {
+        m_frameWidth = width;
+        m_frameHeight = height;
+        m_fboWidth = width;
+        m_fboHeight = height;
+        TicoVulkan::SetSourceExtent(width, height);
+    }
+    return;
+#else
     if (!data && !m_hwRender)
         return;
 
@@ -1809,6 +1987,7 @@ void TicoCore::HandleVideoRefresh(const void *data, unsigned width,
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     }
+#endif
 }
 
 int16_t TicoCore::HandleInputState(unsigned port, unsigned device,
@@ -2145,7 +2324,7 @@ void TicoCore::PreloadRABadges() {
     tico_debug_log("RA: Badge preloading skipped (lazy-load on demand)");
 }
 
-unsigned int TicoCore::GetRABadgeTexture(const std::string& badge_name) {
+uintptr_t TicoCore::GetRABadgeTexture(const std::string& badge_name) {
     // Check in-memory cache first
     auto it = m_raBadgeCache.find(badge_name);
     if (it != m_raBadgeCache.end()) return it->second;
@@ -2155,15 +2334,10 @@ unsigned int TicoCore::GetRABadgeTexture(const std::string& badge_name) {
     int w, h, ch;
     unsigned char* data = stbi_load(path.c_str(), &w, &h, &ch, 4);
     if (data) {
-        unsigned int tex = 0;
-        glGenTextures(1, &tex);
-        glBindTexture(GL_TEXTURE_2D, tex);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
-        glBindTexture(GL_TEXTURE_2D, 0);
+        uintptr_t tex = CreateUiTextureRGBA(data, w, h);
         stbi_image_free(data);
-        m_raBadgeCache[badge_name] = tex;
+        if (tex)
+            m_raBadgeCache[badge_name] = tex;
         return tex;
     }
     return 0;
@@ -2247,16 +2421,11 @@ void TicoCore::ProcessPendingBadgeUploads() {
         int width, height, comp;
         unsigned char* img_data = stbi_load_from_memory(upload.second.data(), upload.second.size(), &width, &height, &comp, 4);
         if (img_data) {
-            unsigned int tex;
-            glGenTextures(1, &tex);
-            glBindTexture(GL_TEXTURE_2D, tex);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, img_data);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-            glBindTexture(GL_TEXTURE_2D, 0);
+            uintptr_t tex = CreateUiTextureRGBA(img_data, width, height);
             stbi_image_free(img_data);
 
-            m_raBadgeCache[upload.first] = tex;
+            if (tex)
+                m_raBadgeCache[upload.first] = tex;
         }
     }
 }

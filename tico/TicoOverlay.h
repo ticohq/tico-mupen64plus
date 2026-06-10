@@ -5,6 +5,7 @@
 
 #include "imgui.h"
 #include <SDL.h>
+#include <cstdint>
 #include <string>
 #include <vector>
 #include <memory>
@@ -116,7 +117,7 @@ private:
     void SaveCoreSettings();
     void ApplyScalingSettings(bool save = true);
 
-    unsigned int m_triangleTexture = 0;
+    uintptr_t m_triangleTexture = 0;
     int m_triangleWidth = 0;
     int m_triangleHeight = 0;
 
@@ -138,7 +139,7 @@ private:
     bool m_isCharging = false;
     float m_batteryTimer = 0.0f;
     float m_chargingStateProgress = 0.0f;
-    unsigned int m_boltTexture = 0;
+    uintptr_t m_boltTexture = 0;
     int m_boltWidth = 0;
     int m_boltHeight = 0;
 
@@ -149,7 +150,7 @@ private:
     void LoadGeneralConfig();
     void LoadSVGIcon();
 
-    unsigned int m_avatarTexture = 0;
+    uintptr_t m_avatarTexture = 0;
     std::string m_nickname;
     void LoadAccountData();
     void RenderSocialArea(ImDrawList *dl, ImVec2 displaySize);

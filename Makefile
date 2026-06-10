@@ -214,10 +214,11 @@ else ifeq ($(platform), libnx)
    PLATCFLAGS = -O3 -ffast-math -funsafe-math-optimizations -fPIE -I$(PORTLIBS)/include/ -I$(PORTLIBS)/include/freetype2 -I$(LIBNX)/include/ -ffunction-sections -fdata-sections -ftls-model=local-exec -specs=$(LIBNX)/switch.specs
    PLATCFLAGS += $(INCLUDE) -D__SWITCH__=1 -DSWITCH -DHAVE_LIBNX -D_GLIBCXX_USE_C99_MATH_TR1 -D_LDBL_EQ_DBL -funroll-loops #-DM64P_NETPLAY
    CXXFLAGS += -fno-rtti -std=gnu++14
-   COREFLAGS += -DOS_LINUX -DEGL
+   COREFLAGS += -DOS_LINUX -DEGL -DVK_USE_PLATFORM_VI_NN
    GLES = 0
    WITH_DYNAREC = aarch64
    HAVE_PARALLEL_RSP = 1
+   HAVE_PARALLEL_RDP = 1
    LLE = 1
    STATIC_LINKING = 1
 

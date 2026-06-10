@@ -12,6 +12,8 @@ source $DEVKITPRO/devkitA64/base_tools 2>/dev/null || true
 
 PORTLIBS=$DEVKITPRO/portlibs/switch
 LIBNX=$DEVKITPRO/libnx
+MESA_NVK_DIR="${MESA_NVK_DIR:-/nvk-build}"
+SWITCH_VULKAN_LIBRARY="${SWITCH_VULKAN_LIBRARY:-}"
 
 # Project root
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -42,8 +44,29 @@ fi
 
 USE_CUSTOM_MESA=0
 MESA_ARCHIVES=()
+USE_VULKAN_FRONTEND=1
+VULKAN_ARCHIVES=()
 
-if [ -n "$MESA_BUILD_ROOT" ]; then
+if [ -z "$SWITCH_VULKAN_LIBRARY" ]; then
+    if [ -f "/opt/nvk-switch/lib/libvulkan.a" ]; then
+        SWITCH_VULKAN_LIBRARY="/opt/nvk-switch/lib/libvulkan.a"
+    elif [ -f "$MESA_NVK_DIR/src/nouveau/vulkan/libvulkan.a" ]; then
+        SWITCH_VULKAN_LIBRARY="$MESA_NVK_DIR/src/nouveau/vulkan/libvulkan.a"
+    elif [ -n "$MESA_BUILD_ROOT" ] && [ -f "$MESA_BUILD_ROOT/src/nouveau/vulkan/libvulkan.a" ]; then
+        SWITCH_VULKAN_LIBRARY="$MESA_BUILD_ROOT/src/nouveau/vulkan/libvulkan.a"
+    fi
+fi
+
+if [ -n "$SWITCH_VULKAN_LIBRARY" ] && [ -f "$SWITCH_VULKAN_LIBRARY" ]; then
+    VULKAN_ARCHIVES=("$SWITCH_VULKAN_LIBRARY")
+    echo "Using Switch Vulkan archive: $SWITCH_VULKAN_LIBRARY"
+else
+    echo "Error: Switch Vulkan archive not found."
+    echo "Set SWITCH_VULKAN_LIBRARY or mount Mesa NVK at $MESA_NVK_DIR."
+    exit 1
+fi
+
+if [ "$USE_VULKAN_FRONTEND" -eq 0 ] && [ -n "$MESA_BUILD_ROOT" ]; then
     REQUIRED_MESA_ARCHIVES=(
         "$MESA_BUILD_ROOT/src/egl/libEGL.a"
         "$MESA_BUILD_ROOT/src/mapi/shared-glapi/libglapi.a"
@@ -83,8 +106,9 @@ echo "--- Step 1: Building mupen64plus static library ---"
 
 cd "$ROOT_DIR"
 # make clean 2>/dev/null || true
-echo "Building libnx core with Parallel RSP + LLE enabled"
-make -j$(nproc) platform=libnx
+echo "Building libnx core with Parallel RDP/RSP + LLE enabled"
+BUILD_JOBS="${BUILD_JOBS:-$(command -v nproc >/dev/null && nproc || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)}"
+make -j"$BUILD_JOBS" platform=libnx
 
 STATIC_LIB="$ROOT_DIR/mupen64plus_next_libretro_libnx.a"
 if [ ! -f "$STATIC_LIB" ]; then
@@ -108,13 +132,18 @@ AR="${DEVKITA64}/bin/aarch64-none-elf-ar"
 COMMON_FLAGS="-march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE -O0 -g"
 COMMON_FLAGS="$COMMON_FLAGS -ffunction-sections -fdata-sections -D__SWITCH__ -DHAVE_LIBNX"
 COMMON_FLAGS="$COMMON_FLAGS -fno-lto"
-COMMON_FLAGS="$COMMON_FLAGS -DIMGUI_IMPL_OPENGL_LOADER_CUSTOM -DDISABLE_LOGGING -include glad.h"
+if [ "${TICO_ENABLE_LOGGING:-1}" -eq 0 ]; then
+    COMMON_FLAGS="$COMMON_FLAGS -DDISABLE_LOGGING"
+fi
+COMMON_FLAGS="$COMMON_FLAGS -DTICO_VULKAN_OVERLAY -DHAVE_VULKAN -DVK_USE_PLATFORM_VI_NN -DIMGUI_IMPL_VULKAN_NO_PROTOTYPES -DIMGUI_DISABLE_DEFAULT_SHELL_FUNCTIONS"
 COMMON_FLAGS="$COMMON_FLAGS -I$LIBNX/include -I$PORTLIBS/include -I$PORTLIBS/include/SDL2"
 COMMON_FLAGS="$COMMON_FLAGS -I$TICO_DIR -I$TICO_DIR/deps"
 COMMON_FLAGS="$COMMON_FLAGS -I$ROOT_DIR/libretro-common/include"
 COMMON_FLAGS="$COMMON_FLAGS -I$ROOT_DIR/mupen64plus-core/src"
 COMMON_FLAGS="$COMMON_FLAGS -I$ROOT_DIR/mupen64plus-core/subprojects/md5"
 COMMON_FLAGS="$COMMON_FLAGS -I$ROOT_DIR/libretro"
+COMMON_FLAGS="$COMMON_FLAGS -I$ROOT_DIR/mupen64plus-video-paraLLEl/parallel-rdp/volk"
+COMMON_FLAGS="$COMMON_FLAGS -I$ROOT_DIR/mupen64plus-video-paraLLEl/parallel-rdp/vulkan-headers/include"
 COMMON_FLAGS="$COMMON_FLAGS -I$ROOT_DIR/rcheevos/include -DRC_CLIENT_SUPPORTS_HASH"
 COMMON_FLAGS="$COMMON_FLAGS -specs=$LIBNX/switch.specs"
 
@@ -129,14 +158,12 @@ TICO_SOURCES=(
     "$TICO_DIR/TicoMain.cpp"
     "$TICO_DIR/TicoCore.cpp"
     "$TICO_DIR/TicoOverlay.cpp"
+    "$TICO_DIR/TicoVulkan.cpp"
     "$TICO_DIR/TicoTranslationManager.cpp"
     "$TICO_DIR/TicoStubs.cpp"
 )
 
-# glad.c (OpenGL loader)
-TICO_C_SOURCES=(
-    "$TICO_DIR/glad.c"
-)
+TICO_C_SOURCES=()
 
 # ImGui sources (from tico/deps/imgui)
 IMGUI_DIR="$TICO_DIR/deps/imgui"
@@ -146,8 +173,7 @@ IMGUI_SOURCES=(
     "$IMGUI_DIR/imgui_tables.cpp"
     "$IMGUI_DIR/imgui_widgets.cpp"
     "$IMGUI_DIR/imgui_demo.cpp"
-    "$IMGUI_DIR/backends/imgui_impl_sdl2.cpp"
-    "$IMGUI_DIR/backends/imgui_impl_opengl3.cpp"
+    "$IMGUI_DIR/backends/imgui_impl_vulkan.cpp"
 )
 
 IMGUI_FLAGS="-I$IMGUI_DIR -I$IMGUI_DIR/backends"
@@ -222,8 +248,9 @@ LINK_FLAGS="$LINK_FLAGS -Wl,--gc-sections -Wl,-Map,$BUILD_DIR/mupen64plus_tico.m
 
 LINK_LIBS="-L$PORTLIBS/lib -L$LIBNX/lib"
 LINK_LIBS="$LINK_LIBS -lSDL2_mixer -lmpg123 -lmodplug -lopusfile -lopus -lvorbisidec -logg -lSDL2"
-
-if [ "$USE_CUSTOM_MESA" -eq 0 ]; then
+if [ "$USE_VULKAN_FRONTEND" -eq 1 ]; then
+    LINK_LIBS="$LINK_LIBS -ldrm_nouveau"
+else
     LINK_LIBS="$LINK_LIBS -lEGL -lglapi -ldrm_nouveau"
 fi
 
@@ -234,6 +261,7 @@ $CXX $LINK_FLAGS \
     "${TICO_OBJS[@]}" \
     "$STATIC_LIB" \
     "${MESA_ARCHIVES[@]}" \
+    "${VULKAN_ARCHIVES[@]}" \
     $LINK_LIBS \
     -o "$ELF_OUTPUT"
 

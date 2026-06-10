@@ -4,6 +4,7 @@
 #include "parallel.h"
 #include "z64.h"
 #include <assert.h>
+#include <chrono>
 
 using namespace Vulkan;
 using namespace std;
@@ -111,7 +112,27 @@ void process_commands()
 		{
 			// For synchronous RDP:
 			if (synchronous && frontend)
-				frontend->wait_for_timeline(frontend->signal_timeline());
+			{
+				// Instrumented: these waits run on the emulation thread, so every ms
+				// spent here is emulation time lost. Logs individual slow waits and a
+				// cumulative total every ~600 SyncFulls so the log shows how much frame
+				// time synchronous RDP is actually costing.
+				static uint64_t s_syncFullCount = 0;
+				static uint64_t s_syncWaitTotalMs = 0;
+				uint64_t n = ++s_syncFullCount;
+				uint64_t tl = frontend->signal_timeline();
+				auto t0 = std::chrono::steady_clock::now();
+				frontend->wait_for_timeline(tl);
+				uint64_t ms = (uint64_t)std::chrono::duration_cast<std::chrono::milliseconds>(
+					std::chrono::steady_clock::now() - t0).count();
+				s_syncWaitTotalMs += ms;
+				if (ms >= 10)
+					log_cb(RETRO_LOG_WARN, "paraLLEl-RDP: SyncFull #%llu SLOW wait_for_timeline: %llu ms\n",
+					       (unsigned long long)n, (unsigned long long)ms);
+				if ((n % 600) == 0)
+					log_cb(RETRO_LOG_WARN, "paraLLEl-RDP: SyncFull stats: %llu waits, %llu ms total\n",
+					       (unsigned long long)n, (unsigned long long)s_syncWaitTotalMs);
+			}
 			*gfx_info.MI_INTR_REG |= DP_INTERRUPT;
 			gfx_info.CheckInterrupts();
 		}
@@ -372,7 +393,15 @@ void complete_frame()
 	opts.upscale_deinterlacing = !interlacing;
 	opts.downscale_steps = downscaling_steps;
 	opts.crop_overscan_pixels = overscan;
+	static uint64_t s_scanoutCount = 0;
+	uint64_t scn = ++s_scanoutCount;
+	bool logScn = scn <= 8;
+	if (logScn)
+		log_cb(RETRO_LOG_INFO, "paraLLEl-RDP: complete_frame #%llu scanout ENTER\n", (unsigned long long)scn);
 	auto image = frontend->scanout(opts);
+	if (logScn)
+		log_cb(RETRO_LOG_INFO, "paraLLEl-RDP: complete_frame #%llu scanout EXIT (img=%d)\n",
+		       (unsigned long long)scn, image ? 1 : 0);
 	unsigned index = vulkan->get_sync_index(vulkan->handle);
 
 	if (!image)

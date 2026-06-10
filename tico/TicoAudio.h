@@ -121,12 +121,126 @@ public:
     static constexpr int CHANNELS = 2;
     static constexpr size_t BUFFER_SIZE = SAMPLE_RATE * 6;
     
-    // Strict 50ms latency target to prevent cumulative audio delay
-    static constexpr size_t MAX_BUFFERED_SAMPLES = (SAMPLE_RATE * 50 / 1000) * CHANNELS; // 50ms (4410 samples)
+    // Latency cap. 80ms: must hold the prime level (~35ms) plus one consumer period
+    // (~23ms) plus one video frame of production (~17ms) without tripping the producer
+    // throttle; the old 50ms cap left the buffer operating below one consumer period,
+    // which underruns (and stutters) on every callback.
+    static constexpr size_t MAX_BUFFERED_SAMPLES = (SAMPLE_RATE * 80 / 1000) * CHANNELS; // 80ms (7056 samples)
+    // Silence pre-fill written when the ring runs dry: 3072 int16 ≈ 35ms of stereo,
+    // 1.5x the consumer's 2048-sample callback period.
+    static constexpr size_t PRIME_SAMPLES = 3072;
     static constexpr size_t SDL_QUEUE_MAX_BYTES = MAX_BUFFERED_SAMPLES * sizeof(int16_t);
+
+    // Hard cap so audio backpressure can NEVER block the emulation thread forever.
+    // ~50ms on Switch (100µs/spin). If the sink won't drain within this window (e.g. a
+    // stalled audout consumer), drop samples instead of spinning — a brief audio glitch
+    // beats a hard freeze that needs a force-exit. This is the emulation thread, so an
+    // unbounded wait here deadlocks retro_run().
+    static constexpr int MAX_BACKPRESSURE_SPINS = 500;
 
     TicoAudio() : m_buffer(BUFFER_SIZE), m_resampler(nullptr), m_deviceId(0),
                   m_initialized(false), m_paused(false), m_coreSampleRate(SAMPLE_RATE) {}
+
+    // Bounded wait for room in the audio sink. Returns true if there is room to write,
+    // false if the sink is full and the caller should drop the samples.
+    //
+    // Emulation timing is governed by vsync (FIFO present) + the frame pacer, NOT by this
+    // throttle, so it must never govern frame rate. On the parallel-RDP path the whole
+    // emulator runs on one cooperative thread and the SDL_mixer callback gets starved, so
+    // the buffer never drains; spinning the full cap on every push there crushed the
+    // framerate. Hysteresis fixes it: once we see the sink isn't draining we mark it
+    // "stalled" and drop immediately (no spin) until it recovers below half-full. On the
+    // GLideN64 path the sink drains normally, so this never trips and behaviour is
+    // unchanged.
+    bool WaitForAudioRoom(bool useQueue)
+    {
+        if (m_paused)
+            return true;
+
+        const size_t maxLevel = useQueue ? SDL_QUEUE_MAX_BYTES : MAX_BUFFERED_SAMPLES;
+        auto level = [&]() -> size_t {
+            return useQueue ? (size_t)SDL_GetQueuedAudioSize(m_deviceId)
+                            : m_buffer.Available();
+        };
+
+        if (m_audioSinkStalled)
+        {
+            if (level() < maxLevel / 2)
+                m_audioSinkStalled = false; // drained with margin — resume normal throttling
+            else
+            {
+                NoteAudioStall();
+                // Brief yield so the SDL audio consumer thread gets a scheduling slice.
+                // On the parallel-RDP path the consumer may be stuck sharing the pegged
+                // emulation core until its first callback runs and pins itself to core 0;
+                // this hands it that first slice to bootstrap. Bounded + tiny so it can't
+                // tank the framerate the way the old unbounded spin did. Once the consumer
+                // reaches core 0 it drains on its own and we stop hitting this path.
+#ifdef __SWITCH__
+                svcSleepThread(500000); // 500µs
+#endif
+                return false;
+            }
+        }
+
+        int spins = 0;
+        while (level() >= maxLevel)
+        {
+            if (m_paused)
+                return true;
+            if (++spins > MAX_BACKPRESSURE_SPINS)
+            {
+                m_audioSinkStalled = true;
+                NoteAudioStall();
+                return false;
+            }
+#ifdef __SWITCH__
+            svcSleepThread(100000); // 100µs yield
+#else
+            SDL_Delay(1);
+#endif
+        }
+        return true;
+    }
+
+    // Diagnostics for the main-loop heartbeat (the AUDIO log category is disabled in
+    // release builds, so audio state must be reported via a visible category).
+    uint64_t GetConsumerCalls() const { return m_consumerCalls.load(std::memory_order_relaxed); }
+    uint64_t GetStallCount() const { return m_audioStallCount; }
+    size_t GetBufferedSamples() { return m_buffer.Available(); }
+    bool IsSinkStalled() const { return m_audioSinkStalled; }
+    uint32_t GetUnderrunCount() const { return m_underrunCount.load(std::memory_order_relaxed); }
+    uint64_t GetPrimeCount() const { return m_primeCount; }
+
+    // When the ring runs dry, pre-fill silence before writing real samples. The consumer
+    // takes 2048 int16 per callback while the producer adds ~1470 per video frame; if the
+    // mean fill level sits below one consumer period, the sawtooth bottoms out on every
+    // callback and each one pads with zeros — constant crackle. One deliberate ~35ms
+    // insertion moves the operating point up so the sawtooth floats clear of empty; it
+    // only recurs if clock drift drains the ring again (rare single hiccup instead).
+    // Producer-thread only, preserving the ring's single-producer/single-consumer model.
+    void PrimeIfEmpty()
+    {
+        if (m_buffer.Available() != 0)
+            return;
+        int16_t zeros[512] = {};
+        size_t remaining = PRIME_SAMPLES;
+        while (remaining > 0)
+        {
+            size_t n = std::min(remaining, sizeof(zeros) / sizeof(zeros[0]));
+            m_buffer.Write(zeros, n);
+            remaining -= n;
+        }
+        m_primeCount++;
+    }
+
+    void NoteAudioStall()
+    {
+        if ((m_audioStallCount++ % 240) == 0)
+            LOG_WARN("CORE", "AUDIO: sink not draining (stall #%llu, consumer_calls=%llu) — dropping samples",
+                     (unsigned long long)m_audioStallCount,
+                     (unsigned long long)m_consumerCalls.load(std::memory_order_relaxed));
+    }
 
     ~TicoAudio()
     {
@@ -227,29 +341,18 @@ public:
 
         if (TicoConfig::USE_SDLQUEUEAUDIO)
         {
-            while (SDL_GetQueuedAudioSize(m_deviceId) >= SDL_QUEUE_MAX_BYTES && !m_paused)
-            {
-#ifdef __SWITCH__
-                svcSleepThread(100000); // 100µs yield
-#else
-                SDL_Delay(1);
-#endif
-            }
+            if (!WaitForAudioRoom(/*useQueue=*/true))
+                return; // sink stalled — drop rather than freeze the emulator
 
             int16_t samples[2] = {left, right};
             SDL_QueueAudio(m_deviceId, samples, sizeof(samples));
         }
         else
         {
-            while (m_buffer.Available() >= MAX_BUFFERED_SAMPLES && !m_paused)
-            {
-#ifdef __SWITCH__
-                svcSleepThread(100000);
-#else
-                SDL_Delay(1);
-#endif
-            }
+            if (!WaitForAudioRoom(/*useQueue=*/false))
+                return;
 
+            PrimeIfEmpty();
             int16_t samples[2] = {left, right};
             m_buffer.Write(samples, 2);
         }
@@ -265,28 +368,17 @@ public:
 
         if (TicoConfig::USE_SDLQUEUEAUDIO)
         {
-            while (SDL_GetQueuedAudioSize(m_deviceId) >= SDL_QUEUE_MAX_BYTES && !m_paused)
-            {
-#ifdef __SWITCH__
-                svcSleepThread(100000);
-#else
-                SDL_Delay(1);
-#endif
-            }
+            if (!WaitForAudioRoom(/*useQueue=*/true))
+                return frames; // sink stalled — drop batch (report consumed) instead of freezing
 
             SDL_QueueAudio(m_deviceId, data, samplesNeeded * sizeof(int16_t));
         }
         else
         {
-            while (m_buffer.Available() >= MAX_BUFFERED_SAMPLES && !m_paused)
-            {
-#ifdef __SWITCH__
-                svcSleepThread(100000);
-#else
-                SDL_Delay(1);
-#endif
-            }
+            if (!WaitForAudioRoom(/*useQueue=*/false))
+                return frames;
 
+            PrimeIfEmpty();
             m_buffer.Write(data, samplesNeeded);
         }
         return frames;
@@ -325,15 +417,26 @@ private:
             return;
         }
 
+        self->m_consumerCalls.fetch_add(1, std::memory_order_relaxed);
+
 #ifdef __SWITCH__
-        static thread_local bool s_audioThreadPinned = false;
-        if (!s_audioThreadPinned)
+        // Re-evaluate the pin on every callback instead of latching the first result:
+        // callbacks start at Mix_OpenAudio, long before the core sets current_rsp_type,
+        // so a pin-once lands on core 1 with rsp still NONE. On the parallel-RDP path
+        // the emulator then pegs core 1 (the libco coroutine re-pins the main thread
+        // from core 2 to core 1) and HOS strict-priority scheduling starves this thread
+        // to literally zero CPU — audio goes silent. Core 2 is the free core in that
+        // mode; GLideN64-threaded is the mirror image (emu core 0, render core 2), so
+        // it keeps core 1. The re-pin costs one compare per callback; the syscall only
+        // fires when the preferred core actually changes.
+        static thread_local int s_audioPinnedCore = -1;
+        const int preferredCore = (current_rsp_type == RSP_PLUGIN_PARALLEL) ? 2 : 1;
+        if (s_audioPinnedCore != preferredCore)
         {
-            const int preferredCore = (current_rsp_type == RSP_PLUGIN_PARALLEL) ? 0 : 1;
             Result rc = svcSetThreadCoreMask(CUR_THREAD_HANDLE, preferredCore, 1u << preferredCore);
             if (R_SUCCEEDED(rc))
-                LOG_AUDIO("Pinned audio callback thread to core %d", preferredCore);
-            s_audioThreadPinned = true;
+                s_audioPinnedCore = preferredCore;
+            LOG_WARN("CORE", "AUDIO: callback thread pinned to core %d (rc=0x%x)", preferredCore, rc);
         }
 #endif
 
@@ -392,4 +495,8 @@ private:
     bool m_paused;
     int m_coreSampleRate;
     std::atomic<uint32_t> m_underrunCount{0};
+    uint64_t m_audioStallCount = 0; // emulation-thread only; counts backpressure drops
+    bool m_audioSinkStalled = false; // sticky: sink isn't draining, drop instead of spinning
+    std::atomic<uint64_t> m_consumerCalls{0}; // incremented by the SDL audio callback thread
+    uint64_t m_primeCount = 0; // producer-thread only; silence pre-fills after the ring ran dry
 };

@@ -6,15 +6,16 @@
 #include "TicoCore.h"
 #include "TicoConfig.h"
 #include "TicoTranslationManager.h"
+#ifdef TICO_VULKAN_OVERLAY
+#include "TicoVulkan.h"
+#endif
 #include <algorithm>
 #include <cmath>
 #include <fstream>
 #include "TicoUtils.h"
 #include <json.hpp>
 
-#ifdef __SWITCH__
-#include "glad.h"
-#else
+#ifndef TICO_VULKAN_OVERLAY
 #include "glad.h"
 #endif
 
@@ -62,6 +63,40 @@ namespace UIStyle {
     }
 }
 
+static uintptr_t CreateOverlayTextureRGBA(const unsigned char *data, int width, int height)
+{
+    if (!data || width <= 0 || height <= 0)
+        return 0;
+
+#ifdef TICO_VULKAN_OVERLAY
+    return (uintptr_t)TicoVulkan::CreateOverlayTextureRGBA(
+        data, (uint32_t)width, (uint32_t)height);
+#else
+    unsigned int texture = 0;
+    glGenTextures(1, &texture);
+    glBindTexture(GL_TEXTURE_2D, texture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    return texture;
+#endif
+}
+
+static void DestroyOverlayTexture(uintptr_t &texture)
+{
+    if (!texture)
+        return;
+
+#ifdef TICO_VULKAN_OVERLAY
+    TicoVulkan::DestroyOverlayTexture((ImTextureID)texture);
+#else
+    unsigned int glTexture = (unsigned int)texture;
+    glDeleteTextures(1, &glTexture);
+#endif
+    texture = 0;
+}
+
 TicoOverlay::TicoOverlay() {
     m_gameTitle = "mupen64plus";
     LoadConfig();
@@ -75,23 +110,9 @@ TicoOverlay::TicoOverlay() {
 
 TicoOverlay::~TicoOverlay()
 {
-    if (m_triangleTexture != 0)
-    {
-        glDeleteTextures(1, &m_triangleTexture);
-        m_triangleTexture = 0;
-    }
-
-    if (m_boltTexture != 0)
-    {
-        glDeleteTextures(1, &m_boltTexture);
-        m_boltTexture = 0;
-    }
-
-    if (m_avatarTexture != 0)
-    {
-        glDeleteTextures(1, &m_avatarTexture);
-        m_avatarTexture = 0;
-    }
+    DestroyOverlayTexture(m_triangleTexture);
+    DestroyOverlayTexture(m_boltTexture);
+    DestroyOverlayTexture(m_avatarTexture);
 
 #ifdef __SWITCH__
     psmExit();
@@ -145,12 +166,9 @@ void TicoOverlay::LoadAccountData() {
         int width, height, channels;
         unsigned char *data = stbi_load(path, &width, &height, &channels, 4);
         if (data) {
-            if (m_avatarTexture != 0) glDeleteTextures(1, &m_avatarTexture);
-            glGenTextures(1, &m_avatarTexture); glBindTexture(GL_TEXTURE_2D, m_avatarTexture);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
-            glBindTexture(GL_TEXTURE_2D, 0); stbi_image_free(data);
+            DestroyOverlayTexture(m_avatarTexture);
+            m_avatarTexture = CreateOverlayTextureRGBA(data, width, height);
+            stbi_image_free(data);
             m_nickname = "Player 1"; customAvatarLoaded = true; break;
         }
     }
@@ -180,12 +198,9 @@ void TicoOverlay::LoadAccountData() {
                         int width, height, channels;
                         unsigned char *rgba = stbi_load_from_memory(jpegBuf, actualSize, &width, &height, &channels, 4);
                         if (rgba) {
-                            if (m_avatarTexture != 0) glDeleteTextures(1, &m_avatarTexture);
-                            glGenTextures(1, &m_avatarTexture); glBindTexture(GL_TEXTURE_2D, m_avatarTexture);
-                            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-                            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-                            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
-                            glBindTexture(GL_TEXTURE_2D, 0); stbi_image_free(rgba);
+                            DestroyOverlayTexture(m_avatarTexture);
+                            m_avatarTexture = CreateOverlayTextureRGBA(rgba, width, height);
+                            stbi_image_free(rgba);
                         }
                     }
                     free(jpegBuf);
@@ -216,14 +231,7 @@ void TicoOverlay::EnsureRAIconLoaded() {
             unsigned char* img = (unsigned char*)malloc(w * h * 4);
             if (img) {
                 nsvgRasterize(rast, image, 0, 0, sc, img, w, h, w * 4);
-                unsigned int tex = 0;
-                glGenTextures(1, &tex);
-                glBindTexture(GL_TEXTURE_2D, tex);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-                glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, img);
-                glBindTexture(GL_TEXTURE_2D, 0);
-                m_core->m_raIconTexture = tex;
+                m_core->m_raIconTexture = CreateOverlayTextureRGBA(img, w, h);
                 free(img);
             }
             nsvgDeleteRasterizer(rast);
@@ -880,12 +888,8 @@ void TicoOverlay::LoadSVGIcon() {
     unsigned char *img = (unsigned char *)malloc(w * h * 4);
     if (!img) { nsvgDeleteRasterizer(rast); nsvgDelete(image); return; }
     nsvgRasterize(rast, image, 0, 0, sc, img, w, h, w * 4);
-    if (m_boltTexture != 0) glDeleteTextures(1, &m_boltTexture);
-    glGenTextures(1, &m_boltTexture); glBindTexture(GL_TEXTURE_2D, m_boltTexture);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, img);
-    glBindTexture(GL_TEXTURE_2D, 0);
+    DestroyOverlayTexture(m_boltTexture);
+    m_boltTexture = CreateOverlayTextureRGBA(img, w, h);
     free(img); nsvgDeleteRasterizer(rast); nsvgDelete(image);
 }
 

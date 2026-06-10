@@ -27,7 +27,7 @@
 #include <algorithm>
 #include <string.h>
 
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(__SWITCH__)
 #include <dlfcn.h>
 #elif defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
@@ -90,7 +90,9 @@ bool Context::init_loader(PFN_vkGetInstanceProcAddr addr)
 
 	if (!addr)
 	{
-#ifndef _WIN32
+#ifdef __SWITCH__
+		return false;
+#elif !defined(_WIN32)
 		static void *module;
 		if (!module)
 		{

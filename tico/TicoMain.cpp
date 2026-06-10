@@ -18,14 +18,20 @@
 
 #ifdef __SWITCH__
 #include <switch.h>
+#ifndef TICO_VULKAN_OVERLAY
 #include "glad.h"
 #include <EGL/egl.h>
+#endif
 #include <curl/curl.h>
 #endif
 
 #include "imgui.h"
+#ifdef TICO_VULKAN_OVERLAY
+#include "TicoVulkan.h"
+#else
 #include "imgui_impl_sdl2.h"
 #include "imgui_impl_opengl3.h"
+#endif
 
 //==============================================================================
 // NX System Configuration (extern "C")
@@ -44,12 +50,14 @@ size_t __nx_heap_size = 0;
 //==============================================================================
 
 static SDL_Window *g_window = nullptr;
+#ifndef TICO_VULKAN_OVERLAY
 #ifndef __SWITCH__
 static SDL_GLContext g_glContext = nullptr;
 #endif
 static EGLDisplay g_eglDisplay = EGL_NO_DISPLAY;
 static EGLContext g_eglContext = EGL_NO_CONTEXT;
 static EGLSurface g_eglSurface = EGL_NO_SURFACE;
+#endif
 
 static std::unique_ptr<TicoCore> g_core;
 static std::unique_ptr<TicoOverlay> g_overlay;
@@ -102,16 +110,18 @@ static bool UpdateScreenMode()
 
     if (operationMode == AppletOperationMode_Handheld)
     {
-        nwindowSetCrop(nwindowGetDefault(), 0, 360, 1280, 1080);
-        LOG_INFO("DISPLAY", "Mode → Handheld (1280×720 crop)");
+        nwindowSetDimensions(nwindowGetDefault(), 1280, 720);
+        nwindowSetCrop(nwindowGetDefault(), 0, 0, 1280, 720);
+        LOG_INFO("DISPLAY", "Mode → Handheld (1280x720)");
         if (ImGui::GetCurrentContext()) {
             ImGui::GetIO().FontGlobalScale = 1.0f;
         }
     }
     else
     {
+        nwindowSetDimensions(nwindowGetDefault(), 1920, 1080);
         nwindowSetCrop(nwindowGetDefault(), 0, 0, 1920, 1080);
-        LOG_INFO("DISPLAY", "Mode → Docked (1920×1080)");
+        LOG_INFO("DISPLAY", "Mode → Docked (1920x1080)");
         if (ImGui::GetCurrentContext()) {
             ImGui::GetIO().FontGlobalScale = 1.5f;
         }
@@ -208,6 +218,14 @@ bool InitWindow()
     GetDisplayResolution(w, h);
     LOG_INFO("HOME", "Switch Resolution: %dx%d (logical)", w, h);
 
+#ifdef TICO_VULKAN_OVERLAY
+    if (!TicoVulkan::CreateInstance())
+    {
+        LOG_ERROR("VK", "TicoVulkan::CreateInstance failed");
+        return false;
+    }
+    LOG_INFO("VK", "Vulkan instance/surface initialized");
+#else
     // Initialize EGL
     g_eglDisplay = eglGetDisplay(EGL_DEFAULT_DISPLAY);
     if (g_eglDisplay == EGL_NO_DISPLAY)
@@ -281,6 +299,7 @@ bool InitWindow()
     LOG_INFO("EGL", "VSync disabled (eglSwapInterval=0), using manual frame pacing");
 
     LOG_INFO("HOME", "OpenGL %s initialized", glGetString(GL_VERSION));
+#endif
 
 #else
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
@@ -383,8 +402,12 @@ bool InitImGui()
     LOG_INFO("HOME", "ImGui context created");
 
 #ifdef __SWITCH__
+#ifdef TICO_VULKAN_OVERLAY
+    LOG_INFO("HOME", "ImGui Vulkan backend will initialize after core device negotiation");
+#else
     ImGui_ImplSDL2_InitForOpenGL(g_window, nullptr);
     ImGui_ImplOpenGL3_Init("#version 430 core");
+#endif
 #else
     ImGui_ImplSDL2_InitForOpenGL(g_window, g_glContext);
     ImGui_ImplOpenGL3_Init("#version 330 core");
@@ -423,6 +446,12 @@ void CleanupWindow()
 {
     CloseControllers();
 
+#ifdef TICO_VULKAN_OVERLAY
+    TicoVulkan::ShutdownOverlayRenderer();
+    if (ImGui::GetCurrentContext())
+        ImGui::DestroyContext();
+    TicoVulkan::Shutdown();
+#else
     glFinish();
 
     ImGui_ImplOpenGL3_Shutdown();
@@ -451,6 +480,7 @@ void CleanupWindow()
         SDL_GL_DeleteContext(g_glContext);
     }
 #endif
+#endif
 
     if (g_window)
     {
@@ -469,7 +499,9 @@ void ProcessEvents()
     SDL_Event event;
     while (SDL_PollEvent(&event))
     {
+#ifndef TICO_VULKAN_OVERLAY
         ImGui_ImplSDL2_ProcessEvent(&event);
+#endif
 
         if (event.type == SDL_QUIT)
         {
@@ -600,6 +632,89 @@ void Render()
         LOG_DEBUG("RENDER", "Frame %d: Render starting", frameCount);
     }
 
+#ifdef TICO_VULKAN_OVERLAY
+#ifdef __SWITCH__
+    UpdateScreenMode();
+#endif
+
+    if (!TicoVulkan::BeginFrame())
+        return;
+    if (frameCount <= 5)
+        LOG_DEBUG("RENDER", "Frame %d: Vulkan BeginFrame succeeded", frameCount);
+
+    int w, h;
+    GetDisplayResolution(w, h);
+    uint32_t swapW = 0, swapH = 0;
+    TicoVulkan::GetSwapExtent(swapW, swapH);
+    if (swapW != 0 && swapH != 0)
+    {
+        w = (int)swapW;
+        h = (int)swapH;
+    }
+
+    if (g_core)
+    {
+        bool overlayVisible = g_overlay && g_overlay->IsVisible();
+        if (!overlayVisible)
+        {
+            if (frameCount <= 5)
+                LOG_DEBUG("RENDER", "Frame %d: Calling RunFrame", frameCount);
+            g_core->RunFrame();
+            if (frameCount <= 5)
+                LOG_DEBUG("RENDER", "Frame %d: RunFrame returned", frameCount);
+        }
+        else if (frameCount <= 5)
+        {
+            LOG_DEBUG("RENDER", "Frame %d: Overlay visible, RunFrame skipped", frameCount);
+        }
+    }
+
+    TicoVulkan::BeginOverlayFrame();
+
+    ImGuiIO &io = ImGui::GetIO();
+    io.DisplaySize = ImVec2((float)w, (float)h);
+    io.DeltaTime = 1.0f / 60.0f;
+    ImGui::NewFrame();
+
+    ImVec2 displaySize((float)w, (float)h);
+    if (g_overlay)
+    {
+        float ar = g_core ? g_core->GetAspectRatio() : 4.0f / 3.0f;
+        int fw = g_core ? g_core->GetFrameWidth() : 640;
+        int fh = g_core ? g_core->GetFrameHeight() : 480;
+        g_overlay->Render(displaySize, 0, ar, fw, fh, 0, 0);
+    }
+
+    if (g_core && g_core->GetOSDFrames() > 0)
+    {
+        ImDrawList *fg = ImGui::GetForegroundDrawList();
+        const float marginX = 24.0f;
+        const float marginY = 16.0f;
+        const float padX = 16.0f;
+        const float padY = 8.0f;
+        const float rounding = 14.0f;
+
+        int frames = g_core->GetOSDFrames();
+        float alpha = frames < 30 ? frames / 30.0f : 1.0f;
+        std::string msg = g_core->GetOSDMessage();
+        ImVec2 textSize = ImGui::CalcTextSize(msg.c_str());
+        float pillW = textSize.x + padX * 2;
+        float pillH = textSize.y + padY * 2;
+        ImU32 bgCol = IM_COL32(0, 0, 0, (int)(alpha * 153));
+        fg->AddRectFilled(ImVec2(marginX, marginY), ImVec2(marginX + pillW, marginY + pillH), bgCol, rounding);
+        ImU32 textCol = IM_COL32(255, 255, 255, (int)(alpha * 240));
+        fg->AddText(ImVec2(marginX + padX, marginY + padY), textCol, msg.c_str());
+        g_core->DecrementOSD();
+    }
+
+    ImGui::Render();
+    TicoVulkan::SetOverlayDrawData(ImGui::GetDrawData());
+    TicoVulkan::EndFrame();
+    if (frameCount <= 5)
+        LOG_DEBUG("RENDER", "Frame %d: Vulkan EndFrame returned", frameCount);
+    return;
+#else
+
     ImGui_ImplOpenGL3_NewFrame();
 
 #ifdef __SWITCH__
@@ -691,6 +806,7 @@ void Render()
 #else
     SDL_GL_SwapWindow(g_window);
 #endif
+#endif
 }
 
 //==============================================================================
@@ -699,7 +815,7 @@ void Render()
 
 int main(int argc, char *argv[])
 {
-    Logger::Instance().ResetLogFile();
+    Logger::Instance().StartNewLogFile();
 
     g_running = true;
     g_controllersDirty = true;
@@ -728,8 +844,9 @@ int main(int argc, char *argv[])
         LOG_ERROR("HOME", "socketInitializeDefault failed");
     }
 
-    LOG_INFO("HOME", "Calling nwindowSetDimensions...");
-    nwindowSetDimensions(nwindowGetDefault(), 1920, 1080);
+    LOG_INFO("HOME", "Configuring native window...");
+    g_lastOperationMode = 255;
+    UpdateScreenMode();
     LOG_INFO("HOME", "Switch pre-init complete (romfs, nwindow)");
 #endif
 
@@ -751,12 +868,14 @@ int main(int argc, char *argv[])
     PinCurrentThreadToCore(2, "main/render");
 #endif
 
+#ifndef TICO_VULKAN_OVERLAY
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
 #ifdef __SWITCH__
     eglSwapBuffers(g_eglDisplay, g_eglSurface);
 #else
     SDL_GL_SwapWindow(g_window);
+#endif
 #endif
 
     LOG_INFO("HOME", "Calling InitImGui...");
@@ -775,9 +894,11 @@ int main(int argc, char *argv[])
     LOG_INFO("HOME", "Creating core...");
     g_core = std::make_unique<TicoCore>();
 
+#ifndef TICO_VULKAN_OVERLAY
     LOG_INFO("HOME", "Creating overlay...");
     g_overlay = std::make_unique<TicoOverlay>();
     g_overlay->SetCore(g_core.get());
+#endif
 
     g_core->SetAudioCallbacks(AudioSampleCallback, AudioSampleBatchCallback, AudioFlushCallback);
 
@@ -811,7 +932,8 @@ int main(int argc, char *argv[])
         if (cleanTitle.empty())
             cleanTitle = filename;
 
-        g_overlay->SetGameTitle(cleanTitle);
+        if (g_overlay)
+            g_overlay->SetGameTitle(cleanTitle);
     }
 
     LOG_INFO("HOME", "Loading ROM: %s", romPath.c_str());
@@ -824,6 +946,26 @@ int main(int argc, char *argv[])
         g_audio.SetCoreSampleRate(g_core->GetSampleRate());
         LOG_INFO("AUDIO", "Configured audio pipeline for %.0f Hz core output", g_core->GetSampleRate());
     }
+
+#ifdef TICO_VULKAN_OVERLAY
+    if (!TicoVulkan::InitOverlayRenderer())
+    {
+        LOG_WARN("OVERLAY", "Vulkan overlay renderer unavailable; continuing without overlay");
+    }
+    else
+    {
+        LOG_INFO("HOME", "Creating overlay...");
+        g_overlay = std::make_unique<TicoOverlay>();
+        g_overlay->SetCore(g_core.get());
+
+        size_t lastSlash = romPath.find_last_of("/\\");
+        std::string filename = (lastSlash != std::string::npos) ? romPath.substr(lastSlash + 1) : romPath;
+        std::string cleanTitle = TicoUtils::GetCleanTitle(filename);
+        if (cleanTitle.empty())
+            cleanTitle = filename;
+        g_overlay->SetGameTitle(cleanTitle);
+    }
+#endif
 
     Uint32 lastTime = SDL_GetTicks();
 
@@ -859,6 +1001,23 @@ int main(int argc, char *argv[])
         ProcessEvents();
         HandleInput();
         Render();
+
+        // Audio heartbeat on a visible log category (AUDIO is disabled in release).
+        // consumer_calls flat at 0 => SDL never invokes the mixer callback (setup issue);
+        // rising but buffer pinned full => callback thread is starved (core scheduling).
+        {
+            static uint32_t audioHeartbeatFrames = 0;
+            if ((++audioHeartbeatFrames % 600) == 0)
+            {
+                LOG_WARN("CORE", "AUDIO heartbeat: consumer_calls=%llu buffered=%zu stalled=%d stalls=%llu underruns=%u primes=%llu",
+                         (unsigned long long)g_audio.GetConsumerCalls(),
+                         g_audio.GetBufferedSamples(),
+                         g_audio.IsSinkStalled() ? 1 : 0,
+                         (unsigned long long)g_audio.GetStallCount(),
+                         g_audio.GetUnderrunCount(),
+                         (unsigned long long)g_audio.GetPrimeCount());
+            }
+        }
 
 #ifdef __SWITCH__
         // Manual frame pacing: wait for remainder of frame time.
