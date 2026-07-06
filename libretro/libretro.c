@@ -117,6 +117,17 @@ save_memory_data saved_memory;
 static cothread_t game_thread;
 cothread_t retro_thread;
 
+#ifdef TICO_STANDALONE
+/* Standalone (no libretro frame pump, STANDALONE_PLAN.md): the emulator
+   free-runs on a dedicated pthread; presentation happens from the VI path
+   (parallelUpdateScreen -> tico_standalone_present on the emu thread) and
+   FIFO vsync paces emulation. retro_return() is a no-op, no coroutine is
+   created, and retro_run() must never be called. Definitions near
+   retro_return() at the bottom of this file. */
+void tico_standalone_start_emu(void);
+void tico_standalone_stop_emu(void);
+#endif
+
 int astick_deadzone;
 int astick_sensitivity;
 int r_cbutton;
@@ -755,6 +766,12 @@ void retro_init(void)
 
     environ_cb(RETRO_ENVIRONMENT_SET_PIXEL_FORMAT, &colorMode);
     environ_cb(RETRO_ENVIRONMENT_GET_RUMBLE_INTERFACE, &rumble);
+#ifdef TICO_STANDALONE
+    /* Standalone: no libco coroutine. The emulator free-runs on a dedicated
+       pthread started by tico_standalone_start_emu() after retro_load_game.
+       EmuThreadFunction clears `initializing` when that thread starts. */
+    initializing = true;
+#else
     if(!(current_rdp_type == RDP_PLUGIN_GLIDEN64 && EnableThreadedRenderer))
     {
         initializing = true;
@@ -762,6 +779,7 @@ void retro_init(void)
         retro_thread = co_active();
         game_thread = co_create(65536 * sizeof(void*) * 16, (void (*)(void))EmuThreadFunction);
     }
+#endif
 
     m64p_error ret = CoreStartup(FRONTEND_API_VERSION, ".", ".", NULL, n64DebugCallback, 0, n64StateCallback);
     if(ret && log_cb)
@@ -773,12 +791,17 @@ void retro_deinit(void)
     // Prevent yield to game_thread on unsuccessful context request
     if(load_game_successful)
     {
+#ifdef TICO_STANDALONE
+       /* Standalone: STOP + join + ROM_CLOSE (idempotent). */
+       tico_standalone_stop_emu();
+#else
        if(!(current_rdp_type == RDP_PLUGIN_GLIDEN64 && EnableThreadedRenderer))
        {
            CoreDoCommand(M64CMD_STOP, 0, NULL);
            co_switch(game_thread); /* Let the core thread finish */
            CoreDoCommand(M64CMD_ROM_CLOSE, 0, NULL);
        }
+#endif
     }
 
     CoreShutdown();
@@ -2192,7 +2215,13 @@ bool retro_serialize(void *data, size_t size)
 
    while (!retro_savestate_complete)
    {
+#ifdef TICO_STANDALONE
+      /* The free-running emu thread processes the savestate job at its next
+         main-loop check; just wait for the state callback to fire. */
+      usleep(1000);
+#else
       co_switch(game_thread);
+#endif
    }
 
    if (current_rdp_type == RDP_PLUGIN_GLIDEN64)
@@ -2225,7 +2254,13 @@ bool retro_unserialize(const void *data, size_t size)
 
    while (!retro_savestate_complete)
    {
+#ifdef TICO_STANDALONE
+      /* The free-running emu thread processes the savestate job at its next
+         main-loop check; just wait for the state callback to fire. */
+      usleep(1000);
+#else
       co_switch(game_thread);
+#endif
    }
 
    if (current_rdp_type == RDP_PLUGIN_GLIDEN64)
@@ -2314,11 +2349,61 @@ void retro_cheat_set(unsigned index, bool enabled, const char* codeLine)
 
 void retro_return(void)
 {
+#ifndef TICO_STANDALONE
     if(!(current_rdp_type == RDP_PLUGIN_GLIDEN64 && EnableThreadedRenderer))
     {
        co_switch(retro_thread);
     }
+#endif
+    /* Standalone: per-VI yield is a no-op — the emu thread free-runs and is
+       paced by the FIFO present inside tico_standalone_present(). */
 }
+
+#ifdef TICO_STANDALONE
+#include <unistd.h>
+
+static pthread_t tico_emu_thread;
+static bool tico_emu_thread_started = false;
+
+void tico_standalone_start_emu(void)
+{
+    pthread_attr_t attr;
+
+    if (tico_emu_thread_started)
+        return;
+
+    /* The libco coroutine this replaces had an 8MB stack; give the pthread a
+       generous one too (dynarec + RDP enqueue + savestates run on it). */
+    pthread_attr_init(&attr);
+    pthread_attr_setstacksize(&attr, 4 * 1024 * 1024);
+
+    if (pthread_create(&tico_emu_thread, &attr, &EmuThreadFunction, NULL) == 0)
+    {
+        tico_emu_thread_started = true;
+        if (log_cb)
+            log_cb(RETRO_LOG_INFO, CORE_NAME ": standalone emu thread started\n");
+    }
+    else if (log_cb)
+    {
+        log_cb(RETRO_LOG_ERROR, CORE_NAME ": failed to start standalone emu thread\n");
+    }
+    pthread_attr_destroy(&attr);
+}
+
+void tico_standalone_stop_emu(void)
+{
+    if (!tico_emu_thread_started)
+        return;
+
+    CoreDoCommand(M64CMD_STOP, 0, NULL);
+    pthread_join(tico_emu_thread, NULL);
+    tico_emu_thread_started = false;
+
+    CoreDoCommand(M64CMD_ROM_CLOSE, 0, NULL);
+    if (log_cb)
+        log_cb(RETRO_LOG_INFO, CORE_NAME ": standalone emu thread stopped\n");
+}
+#endif /* TICO_STANDALONE */
 
 uint32_t get_retro_screen_width()
 {

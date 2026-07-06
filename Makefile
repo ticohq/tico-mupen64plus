@@ -651,6 +651,13 @@ CPUOPTS += -fcommon
 CFLAGS += -std=gnu11 -D_CRT_SECURE_NO_WARNINGS -Wno-discarded-qualifiers
 CXXFLAGS += -std=gnu++14 -D_CRT_SECURE_NO_WARNINGS
 
+# Standalone mode (no libretro frame pump): emulator free-runs on a pthread
+# and presents from the VI path. See STANDALONE_PLAN.md. Objects are built
+# in-tree, so switching modes requires a clean (the build script handles it).
+ifeq ($(TICO_STANDALONE), 1)
+   COREFLAGS += -DTICO_STANDALONE
+endif
+
 ifeq ($(HAVE_LTCG),1)
    CPUFLAGS += -flto
 endif

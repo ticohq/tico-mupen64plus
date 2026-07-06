@@ -17,7 +17,14 @@ SWITCH_VULKAN_LIBRARY="${SWITCH_VULKAN_LIBRARY:-}"
 
 # Project root
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
-BUILD_DIR="$ROOT_DIR/build_tico"
+# Standalone mode (TICO_STANDALONE=1, see STANDALONE_PLAN.md): no libretro
+# frame pump — emulator free-runs on a pthread and presents from the VI path.
+TICO_STANDALONE="${TICO_STANDALONE:-0}"
+if [ "$TICO_STANDALONE" -eq 1 ]; then
+    BUILD_DIR="$ROOT_DIR/build_tico_standalone"
+else
+    BUILD_DIR="$ROOT_DIR/build_tico"
+fi
 TICO_DIR="$ROOT_DIR/tico"
 
 # Prefer a locally built Mesa tree when present so the NRO doesn't keep
@@ -108,7 +115,21 @@ cd "$ROOT_DIR"
 # make clean 2>/dev/null || true
 echo "Building libnx core with Parallel RDP/RSP + LLE enabled"
 BUILD_JOBS="${BUILD_JOBS:-$(command -v nproc >/dev/null && nproc || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)}"
-make -j"$BUILD_JOBS" platform=libnx
+
+# Core objects are built in-tree with mode-dependent defines; force a clean
+# when switching between libretro-pump and standalone builds.
+MODE_STAMP="$ROOT_DIR/.tico_build_mode"
+BUILD_MODE="libretro"
+[ "$TICO_STANDALONE" -eq 1 ] && BUILD_MODE="standalone"
+if [ -f "$MODE_STAMP" ] && [ "$(cat "$MODE_STAMP")" != "$BUILD_MODE" ]; then
+    echo "Build mode changed ($(cat "$MODE_STAMP") -> $BUILD_MODE): make clean"
+    make clean >/dev/null 2>&1 || true
+fi
+echo "$BUILD_MODE" > "$MODE_STAMP"
+
+MAKE_ARGS=(platform=libnx)
+[ "$TICO_STANDALONE" -eq 1 ] && MAKE_ARGS+=(TICO_STANDALONE=1)
+make -j"$BUILD_JOBS" "${MAKE_ARGS[@]}"
 
 STATIC_LIB="$ROOT_DIR/mupen64plus_next_libretro_libnx.a"
 if [ ! -f "$STATIC_LIB" ]; then
@@ -136,6 +157,9 @@ if [ "${TICO_ENABLE_LOGGING:-1}" -eq 0 ]; then
     COMMON_FLAGS="$COMMON_FLAGS -DDISABLE_LOGGING"
 fi
 COMMON_FLAGS="$COMMON_FLAGS -DTICO_VULKAN_OVERLAY -DHAVE_VULKAN -DVK_USE_PLATFORM_VI_NN -DIMGUI_IMPL_VULKAN_NO_PROTOTYPES -DIMGUI_DISABLE_DEFAULT_SHELL_FUNCTIONS"
+if [ "$TICO_STANDALONE" -eq 1 ]; then
+    COMMON_FLAGS="$COMMON_FLAGS -DTICO_STANDALONE"
+fi
 COMMON_FLAGS="$COMMON_FLAGS -I$LIBNX/include -I$PORTLIBS/include -I$PORTLIBS/include/SDL2"
 COMMON_FLAGS="$COMMON_FLAGS -I$TICO_DIR -I$TICO_DIR/deps"
 COMMON_FLAGS="$COMMON_FLAGS -I$ROOT_DIR/libretro-common/include"

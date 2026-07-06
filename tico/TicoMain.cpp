@@ -622,53 +622,13 @@ void HandleInput()
     }
 }
 
-void Render()
+/// Build and stage the ImGui overlay + OSD draw data for the current frame.
+/// Shared by the libretro pump path (Render) and the standalone present path
+/// (tico_standalone_present, which runs on the emulation thread). Must be
+/// called between TicoVulkan::BeginFrame and TicoVulkan::EndFrame, and only
+/// ever from the single thread that presents.
+void RenderOverlayAndOSD(int w, int h)
 {
-    static int frameCount = 0;
-    frameCount++;
-
-    if (frameCount <= 3)
-    {
-        LOG_DEBUG("RENDER", "Frame %d: Render starting", frameCount);
-    }
-
-#ifdef TICO_VULKAN_OVERLAY
-#ifdef __SWITCH__
-    UpdateScreenMode();
-#endif
-
-    if (!TicoVulkan::BeginFrame())
-        return;
-    if (frameCount <= 5)
-        LOG_DEBUG("RENDER", "Frame %d: Vulkan BeginFrame succeeded", frameCount);
-
-    int w, h;
-    GetDisplayResolution(w, h);
-    uint32_t swapW = 0, swapH = 0;
-    TicoVulkan::GetSwapExtent(swapW, swapH);
-    if (swapW != 0 && swapH != 0)
-    {
-        w = (int)swapW;
-        h = (int)swapH;
-    }
-
-    if (g_core)
-    {
-        bool overlayVisible = g_overlay && g_overlay->IsVisible();
-        if (!overlayVisible)
-        {
-            if (frameCount <= 5)
-                LOG_DEBUG("RENDER", "Frame %d: Calling RunFrame", frameCount);
-            g_core->RunFrame();
-            if (frameCount <= 5)
-                LOG_DEBUG("RENDER", "Frame %d: RunFrame returned", frameCount);
-        }
-        else if (frameCount <= 5)
-        {
-            LOG_DEBUG("RENDER", "Frame %d: Overlay visible, RunFrame skipped", frameCount);
-        }
-    }
-
     TicoVulkan::BeginOverlayFrame();
 
     ImGuiIO &io = ImGui::GetIO();
@@ -709,7 +669,93 @@ void Render()
 
     ImGui::Render();
     TicoVulkan::SetOverlayDrawData(ImGui::GetDrawData());
+}
+
+void Render()
+{
+    static int frameCount = 0;
+    frameCount++;
+
+    if (frameCount <= 3)
+    {
+        LOG_DEBUG("RENDER", "Frame %d: Render starting", frameCount);
+    }
+
+#ifdef TICO_VULKAN_OVERLAY
+#ifdef __SWITCH__
+    UpdateScreenMode();
+#endif
+
+#ifdef __SWITCH__
+    // Frame-time breakdown, reported every 600 frames: splits the loop into
+    // begin (fence wait + swapchain acquire), run (retro_run = CPU emulation incl.
+    // synchronous RDP waits) and end (submit + FIFO present). Whichever bucket
+    // exceeds its share of 16.7ms is the speed bottleneck.
+    static uint64_t s_ftAccBegin = 0, s_ftAccRun = 0, s_ftAccEnd = 0;
+    static uint32_t s_ftSamples = 0;
+    const uint64_t ftT0 = svcGetSystemTick();
+#endif
+    if (!TicoVulkan::BeginFrame())
+        return;
+#ifdef __SWITCH__
+    const uint64_t ftT1 = svcGetSystemTick();
+#endif
+    if (frameCount <= 5)
+        LOG_DEBUG("RENDER", "Frame %d: Vulkan BeginFrame succeeded", frameCount);
+
+    int w, h;
+    GetDisplayResolution(w, h);
+    uint32_t swapW = 0, swapH = 0;
+    TicoVulkan::GetSwapExtent(swapW, swapH);
+    if (swapW != 0 && swapH != 0)
+    {
+        w = (int)swapW;
+        h = (int)swapH;
+    }
+
+    if (g_core)
+    {
+        bool overlayVisible = g_overlay && g_overlay->IsVisible();
+        if (!overlayVisible)
+        {
+            if (frameCount <= 5)
+                LOG_DEBUG("RENDER", "Frame %d: Calling RunFrame", frameCount);
+            g_core->RunFrame();
+            if (frameCount <= 5)
+                LOG_DEBUG("RENDER", "Frame %d: RunFrame returned", frameCount);
+        }
+        else if (frameCount <= 5)
+        {
+            LOG_DEBUG("RENDER", "Frame %d: Overlay visible, RunFrame skipped", frameCount);
+        }
+    }
+
+#ifdef __SWITCH__
+    const uint64_t ftT2 = svcGetSystemTick();
+#endif
+
+    RenderOverlayAndOSD(w, h);
     TicoVulkan::EndFrame();
+#ifdef __SWITCH__
+    {
+        const uint64_t ftT3 = svcGetSystemTick();
+        s_ftAccBegin += ftT1 - ftT0;
+        s_ftAccRun += ftT2 - ftT1;
+        s_ftAccEnd += ftT3 - ftT2;
+        if (++s_ftSamples == 600)
+        {
+            // 19.2 MHz system tick: us = ticks * 10 / 192
+            const uint64_t b = (s_ftAccBegin / 600) * 10 / 192;
+            const uint64_t r = (s_ftAccRun / 600) * 10 / 192;
+            const uint64_t e = (s_ftAccEnd / 600) * 10 / 192;
+            LOG_WARN("CORE", "FRAME stats avg-us over 600: begin=%llu run=%llu end=%llu total=%llu (budget 16667)",
+                     (unsigned long long)b, (unsigned long long)r,
+                     (unsigned long long)e, (unsigned long long)(b + r + e));
+            s_ftAccBegin = s_ftAccRun = s_ftAccEnd = 0;
+            s_ftSamples = 0;
+        }
+    }
+#endif
     if (frameCount <= 5)
         LOG_DEBUG("RENDER", "Frame %d: Vulkan EndFrame returned", frameCount);
     return;
@@ -812,6 +858,101 @@ void Render()
 //==============================================================================
 // Main
 //==============================================================================
+
+#ifdef TICO_STANDALONE
+// ============================================================================
+// Standalone mode (Phase 1 — STANDALONE_PLAN.md)
+//
+// The emulator free-runs on a dedicated pthread (libretro.c:
+// tico_standalone_start_emu, pinned to core 1 by EmuThreadFunction) and
+// presents from the N64 VI path: paraLLEl's parallelUpdateScreen() calls
+// tico_standalone_present() on the emu thread right after set_image. The FIFO
+// present inside EndFrame() paces emulation to the display — there is no
+// frame pump, no libco coroutine, and no manual pacer. The main thread below
+// only handles applet/input/overlay state at a coarse tick.
+//
+// Phase-1 known limits (see plan): overlay shows over the *running* game (no
+// auto-pause), runtime display-mode switches are not handled, RA badge
+// uploads are deferred (RA disabled during bisection anyway).
+// ============================================================================
+
+extern "C" void tico_standalone_start_emu(void);
+extern "C" void tico_standalone_stop_emu(void);
+
+extern "C" void tico_standalone_present(unsigned width, unsigned height)
+{
+    if (width && height)
+        TicoVulkan::SetSourceExtent(width, height);
+
+    if (!TicoVulkan::BeginFrame())
+        return;
+
+    int w = 0, h = 0;
+    GetDisplayResolution(w, h);
+    uint32_t swapW = 0, swapH = 0;
+    TicoVulkan::GetSwapExtent(swapW, swapH);
+    if (swapW != 0 && swapH != 0)
+    {
+        w = (int)swapW;
+        h = (int)swapH;
+    }
+
+    RenderOverlayAndOSD(w, h);
+    TicoVulkan::EndFrame(); // FIFO present == emu-thread pacing
+
+    static uint64_t s_presented = 0;
+    if ((++s_presented % 600) == 0)
+        LOG_WARN("CORE", "STANDALONE present #%llu (VI-paced)", (unsigned long long)s_presented);
+}
+
+static void TicoStandaloneRun()
+{
+    LOG_INFO("HOME", "Standalone: starting emu thread; main thread is UI-only");
+    tico_standalone_start_emu();
+
+    Uint32 lastTime = SDL_GetTicks();
+    while (g_running)
+    {
+#ifdef __SWITCH__
+        if (!appletMainLoop())
+        {
+            LOG_INFO("HOME", "appletMainLoop returned false, exiting");
+            g_running = false;
+            break;
+        }
+#endif
+        float deltaTime = (SDL_GetTicks() - lastTime) / 1000.0f;
+        lastTime = SDL_GetTicks();
+
+        ProcessEvents();
+        HandleInput();
+        if (g_overlay)
+            g_overlay->Update(deltaTime);
+
+        // Same audio diagnostics as the pump build (~every 10s at this tick).
+        {
+            static uint32_t hb = 0;
+            if ((++hb % 1000) == 0)
+                LOG_WARN("CORE", "AUDIO heartbeat: consumer_calls=%llu buffered=%zu stalled=%d stalls=%llu underruns=%u primes=%llu",
+                         (unsigned long long)g_audio.GetConsumerCalls(),
+                         g_audio.GetBufferedSamples(),
+                         g_audio.IsSinkStalled() ? 1 : 0,
+                         (unsigned long long)g_audio.GetStallCount(),
+                         g_audio.GetUnderrunCount(),
+                         (unsigned long long)g_audio.GetPrimeCount());
+        }
+
+#ifdef __SWITCH__
+        svcSleepThread(10000000ULL); // 10ms UI tick — off the frame path
+#else
+        SDL_Delay(10);
+#endif
+    }
+
+    LOG_INFO("HOME", "Standalone: stopping emu thread");
+    tico_standalone_stop_emu();
+}
+#endif // TICO_STANDALONE
 
 int main(int argc, char *argv[])
 {
@@ -967,6 +1108,11 @@ int main(int argc, char *argv[])
     }
 #endif
 
+#ifdef TICO_STANDALONE
+    // Standalone: the emulator owns the frame path (present-on-VI, FIFO-paced).
+    // This call blocks until exit; the pump loop below is compiled out.
+    TicoStandaloneRun();
+#else
     Uint32 lastTime = SDL_GetTicks();
 
 #ifdef __SWITCH__
@@ -1036,6 +1182,7 @@ int main(int argc, char *argv[])
         }
 #endif
     }
+#endif // !TICO_STANDALONE
 
     LOG_INFO("HOME", "Starting cleanup...");
     g_overlay.reset();

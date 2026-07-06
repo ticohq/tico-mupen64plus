@@ -62,10 +62,21 @@ int parallelRomOpen(void)
 	return parallel_init();
 }
 
+#ifdef TICO_STANDALONE
+// Standalone present hook: with no retro_run pump, presentation happens right
+// here on the emulation thread when the N64 VI scans out — the same inversion
+// standalone m64p gfx plugins use (swap from UpdateScreen). Implemented by the
+// frontend (tico/TicoStandalone.cpp). FIFO vsync inside paces the emu thread.
+extern "C" void tico_standalone_present(unsigned width, unsigned height);
+#endif
+
 void parallelUpdateScreen(void)
 {
 	RDP::complete_frame();
 	libretro_swap_buffer = true;
+#ifdef TICO_STANDALONE
+	tico_standalone_present(parallel_frame_width(), parallel_frame_height());
+#endif
 }
 
 void parallelShowCFB(void)
