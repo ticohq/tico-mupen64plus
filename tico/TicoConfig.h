@@ -6,6 +6,8 @@
 
 namespace TicoConfig {
     constexpr const char* TEST_ROM = "sdmc:/tico/roms/n64/mario.z64";
+    // without a launch argument, the first N64 ROM found here is loaded
+    constexpr const char* ROM_FALLBACK_DIR = "sdmc:/switch/mupen64plus/";
 
     constexpr const char* FONT_PATH = "romfs:/fonts/font.ttf";
     constexpr const char* SYSTEM_PATH = "sdmc:/tico/system/n64/";

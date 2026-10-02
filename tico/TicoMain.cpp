@@ -13,6 +13,14 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <dirent.h>
+#include <sys/stat.h>
+#include <strings.h>
+#include <array>
+#include <atomic>
+#include <condition_variable>
+#include <mutex>
+#include <vector>
 #include "TicoUtils.h"
 #include "TicoLogger.h"
 
@@ -864,12 +872,13 @@ void Render()
 // Standalone mode (Phase 1 — STANDALONE_PLAN.md)
 //
 // The emulator free-runs on a dedicated pthread (libretro.c:
-// tico_standalone_start_emu, pinned to core 1 by EmuThreadFunction) and
-// presents from the N64 VI path: paraLLEl's parallelUpdateScreen() calls
-// tico_standalone_present() on the emu thread right after set_image. The FIFO
-// present inside EndFrame() paces emulation to the display — there is no
-// frame pump, no libco coroutine, and no manual pacer. The main thread below
-// only handles applet/input/overlay state at a coarse tick.
+// tico_standalone_start_emu, pinned to core 1 by EmuThreadFunction) and hands
+// frames over from the N64 VI path: paraLLEl's parallelUpdateScreen() calls
+// tico_standalone_present() on the emu thread right after set_image, which
+// posts the frame to the main thread (core 2). The main thread presents it and
+// handles applet/input/overlay state; FIFO vsync there paces emulation through
+// the one-slot handoff. There is no frame pump, no libco coroutine, and no
+// manual pacer.
 //
 // Phase-1 known limits (see plan): overlay shows over the *running* game (no
 // auto-pause), runtime display-mode switches are not handled, RA badge
@@ -879,36 +888,362 @@ void Render()
 extern "C" void tico_standalone_start_emu(void);
 extern "C" void tico_standalone_stop_emu(void);
 
+static std::atomic<uint64_t> g_standalonePresented{0};
+
+#ifdef __SWITCH__
+extern "C" Handle tico_emu_thread_handle;
+extern "C" void *mupen_jit_rx_addr;
+extern "C" void _start();
+
+// Sampling profiler for the emu thread (same scheme as WatermelonDS): every 5 ms a
+// thread on core 2 pauses the emu thread and records its PC. PCs inside the NRO are
+// bucketed by offset (resolve with tools/resolve_profile.py); PCs in the R4300
+// dynarec cache and in other JIT code (paraLLEl-RSP) are counted separately.
+// Opt-in: create sdmc:/switch/mupen64plus/profile.on (may hold the first frame
+// to sample, default 600); 600 presented frames are sampled.
+namespace {
+constexpr u32 kProfileBucketShift = 4;
+constexpr u32 kProfileBuckets = 0x4000000 >> kProfileBucketShift;
+constexpr u64 kProfileIntervalNs = 5000000;
+constexpr size_t kProfileStackDepth = 16;
+constexpr size_t kProfileMaxStacks = 16384;
+constexpr size_t kR4300JitSize = 1u << 25;
+
+void CollectStack(const ThreadContext &ctx, u64 base, std::array<u64, kProfileStackDepth> &out)
+{
+    out.fill(0);
+    size_t n = 0;
+    auto push = [&](u64 address) {
+        if (n < out.size())
+            out[n++] = address >= base ? address - base : 0xFFFFFFFFull;
+    };
+    push(ctx.pc.x);
+    push(ctx.lr);
+
+    const u64 stackLow = ctx.sp;
+    const u64 stackHigh = ctx.sp + 0x400000;
+    u64 fp = ctx.fp;
+    while (n < out.size() && fp >= stackLow && fp + 16 <= stackHigh && (fp & 0xF) == 0)
+    {
+        const u64 *record = reinterpret_cast<const u64 *>(fp);
+        const u64 next = record[0];
+        const u64 ret = record[1];
+        if (ret == 0)
+            break;
+        push(ret);
+        if (next <= fp)
+            break;
+        fp = next;
+    }
+}
+
+struct Profiler
+{
+    ::Thread Worker{};
+    std::atomic<bool> Running{false};
+    std::mutex DataMutex;
+    u32 *Buckets = nullptr;
+    u32 R4300Jit = 0;
+    u32 OtherJit = 0;
+    u32 Total = 0;
+    u32 Failed = 0;
+    std::vector<std::array<u64, kProfileStackDepth>> Stacks;
+};
+
+Profiler Prof;
+
+void ProfilerThread(void *)
+{
+    const u64 base = (u64)&_start;
+    while (Prof.Running)
+    {
+        svcSleepThread(kProfileIntervalNs);
+        if (!Prof.Running)
+            break;
+
+        ThreadContext ctx;
+        std::array<u64, kProfileStackDepth> stack;
+        if (R_FAILED(svcSetThreadActivity(tico_emu_thread_handle, ThreadActivity_Paused)))
+        {
+            std::lock_guard<std::mutex> lock(Prof.DataMutex);
+            Prof.Failed++;
+            continue;
+        }
+        Result rc = svcGetThreadContext3(&ctx, tico_emu_thread_handle);
+        // the stack is only stable while the thread is paused
+        if (R_SUCCEEDED(rc))
+            CollectStack(ctx, base, stack);
+        svcSetThreadActivity(tico_emu_thread_handle, ThreadActivity_Runnable);
+        // Never acquire the data mutex while the target thread is paused.
+        std::lock_guard<std::mutex> lock(Prof.DataMutex);
+        if (R_FAILED(rc))
+        {
+            Prof.Failed++;
+            continue;
+        }
+
+        Prof.Total++;
+        if (Prof.Stacks.size() < kProfileMaxStacks)
+            Prof.Stacks.push_back(stack);
+        const u64 pc = ctx.pc.x;
+        const u64 jit = (u64)mupen_jit_rx_addr;
+        const u64 offset = pc - base;
+        if (jit && pc >= jit && pc < jit + kR4300JitSize)
+            Prof.R4300Jit++;
+        else if (pc >= base && (offset >> kProfileBucketShift) < kProfileBuckets)
+            Prof.Buckets[offset >> kProfileBucketShift]++;
+        else
+            Prof.OtherJit++;
+    }
+}
+
+void WriteProfile()
+{
+    if (!Prof.Buckets)
+        return;
+
+    std::lock_guard<std::mutex> lock(Prof.DataMutex);
+    const std::string dir = TicoConfig::ROM_FALLBACK_DIR;
+    FILE *f = fopen((dir + "profile.txt").c_str(), "w");
+    if (!f)
+        return;
+    fprintf(f, "total %u r4300_jit %u other_jit %u failed %u\n", Prof.Total, Prof.R4300Jit, Prof.OtherJit, Prof.Failed);
+    fprintf(f, "# interval_ns %llu\n", (unsigned long long)kProfileIntervalNs);
+    for (u32 i = 0; i < kProfileBuckets; i++)
+    {
+        if (Prof.Buckets[i])
+            fprintf(f, "%x %u\n", i << kProfileBucketShift, Prof.Buckets[i]);
+    }
+    fclose(f);
+
+    // one sample per line: hex NRO offsets, innermost first
+    FILE *stacks = fopen((dir + "stacks.txt").c_str(), "w");
+    if (!stacks)
+        return;
+    for (const auto &stack : Prof.Stacks)
+    {
+        for (u64 address : stack)
+        {
+            if (address == 0)
+                break;
+            fprintf(stacks, "%llx ", (unsigned long long)address);
+        }
+        fputc('\n', stacks);
+    }
+    fclose(stacks);
+}
+
+void StartProfiler()
+{
+    if (!tico_emu_thread_handle)
+        return;
+    Prof.Buckets = (u32 *)calloc(kProfileBuckets, sizeof(u32));
+    if (!Prof.Buckets)
+    {
+        LOG_WARN("PROFILE", "profiler allocation failed");
+        return;
+    }
+    Prof.Stacks.reserve(kProfileMaxStacks);
+    Prof.Running = true;
+    const Result created = threadCreate(&Prof.Worker, ProfilerThread, nullptr, nullptr, 0x10000, 0x2C, 2);
+    if (R_FAILED(created) || R_FAILED(threadStart(&Prof.Worker)))
+    {
+        if (R_SUCCEEDED(created))
+            threadClose(&Prof.Worker);
+        Prof.Running = false;
+        LOG_WARN("PROFILE", "profiler thread could not be started");
+        return;
+    }
+    LOG_WARN("PROFILE", "sampling emu thread");
+    // Replace an older run's profile immediately, even if this run is killed.
+    WriteProfile();
+}
+
+void StopProfiler()
+{
+    if (Prof.Running)
+    {
+        Prof.Running = false;
+        threadWaitForExit(&Prof.Worker);
+        threadClose(&Prof.Worker);
+        LOG_WARN("PROFILE", "wrote profile.txt (%u samples, r4300_jit %u, other_jit %u)",
+                 Prof.Total, Prof.R4300Jit, Prof.OtherJit);
+    }
+    WriteProfile();
+}
+} // namespace
+#endif
+
+// The emu thread hands each scanned-out frame to the main thread (core 2), which
+// does the acquire, overlay and present, so none of it costs emulation time on
+// core 1. One slot: the emu thread can post a frame only once the main thread
+// took the previous one, and the main thread takes a frame only after it
+// submitted the one before. So the core never reuses a frame (sync) index whose
+// present has not been submitted, and FIFO vsync still paces emulation.
+namespace {
+struct PresentSlot
+{
+    std::mutex Mutex;
+    std::condition_variable Cond;
+    bool Full = false;
+    bool Shutdown = false;
+    uint32_t FrameIndex = 0;
+    unsigned Width = 0, Height = 0;
+};
+PresentSlot g_presentSlot;
+} // namespace
+
+extern "C" uint64_t tico_rsp_task_ns[3];
+
+static inline uint64_t NowUs()
+{
+    return armTicksToNs(armGetSystemTick()) / 1000;
+}
+
 extern "C" void tico_standalone_present(unsigned width, unsigned height)
 {
+    static uint64_t s_emuUs = 0, s_postUs = 0, s_frames = 0;
+    static uint64_t s_lastExit = 0;
+    const uint64_t t0 = NowUs();
+    if (s_lastExit)
+        s_emuUs += t0 - s_lastExit;
+
+    const uint32_t frameIndex = TicoVulkan::AdvanceCoreFrame();
+    {
+        std::unique_lock<std::mutex> lock(g_presentSlot.Mutex);
+        g_presentSlot.Cond.wait(lock, [] { return !g_presentSlot.Full || g_presentSlot.Shutdown; });
+        if (!g_presentSlot.Shutdown)
+        {
+            g_presentSlot.Full = true;
+            g_presentSlot.FrameIndex = frameIndex;
+            g_presentSlot.Width = width;
+            g_presentSlot.Height = height;
+        }
+    }
+    g_presentSlot.Cond.notify_all();
+
+    const uint64_t t1 = NowUs();
+    s_postUs += t1 - t0;
+    s_lastExit = t1;
+
+    if ((++s_frames % 600) == 0)
+    {
+        // emu = emulation between VIs (rsp_* = RSP share of it by task type);
+        // post = waiting for the main thread to take the frame
+        static uint64_t s_lastRsp[3] = {};
+        uint64_t rsp[3];
+        for (int i = 0; i < 3; i++)
+        {
+            rsp[i] = (tico_rsp_task_ns[i] - s_lastRsp[i]) / 1000 / 600;
+            s_lastRsp[i] = tico_rsp_task_ns[i];
+        }
+        LOG_WARN("CORE", "STANDALONE emu thread avg-us: emu=%llu (rsp_gfx=%llu rsp_audio=%llu rsp_other=%llu) post=%llu (VI budget 16683)",
+                 (unsigned long long)(s_emuUs / 600),
+                 (unsigned long long)rsp[0], (unsigned long long)rsp[1], (unsigned long long)rsp[2],
+                 (unsigned long long)(s_postUs / 600));
+        s_emuUs = s_postUs = 0;
+    }
+}
+
+static void StopPresentSlot()
+{
+    {
+        std::lock_guard<std::mutex> lock(g_presentSlot.Mutex);
+        g_presentSlot.Shutdown = true;
+    }
+    g_presentSlot.Cond.notify_all();
+}
+
+// Main thread: waits up to 10 ms for a frame (the UI tick when nothing is posted).
+static void PresentPostedFrame()
+{
+    static uint64_t s_beginUs = 0, s_overlayUs = 0, s_endUs = 0;
+
+    uint32_t frameIndex = 0;
+    unsigned width = 0, height = 0;
+    {
+        std::unique_lock<std::mutex> lock(g_presentSlot.Mutex);
+        if (!g_presentSlot.Cond.wait_for(lock, std::chrono::milliseconds(10),
+                                         [] { return g_presentSlot.Full; }))
+            return;
+        frameIndex = g_presentSlot.FrameIndex;
+        width = g_presentSlot.Width;
+        height = g_presentSlot.Height;
+    }
+
+    const uint64_t t0 = NowUs();
     if (width && height)
         TicoVulkan::SetSourceExtent(width, height);
 
-    if (!TicoVulkan::BeginFrame())
-        return;
-
-    int w = 0, h = 0;
-    GetDisplayResolution(w, h);
-    uint32_t swapW = 0, swapH = 0;
-    TicoVulkan::GetSwapExtent(swapW, swapH);
-    if (swapW != 0 && swapH != 0)
+    const bool begun = TicoVulkan::BeginFrameAt(frameIndex);
+    const uint64_t t1 = NowUs();
+    uint64_t t2 = t1;
+    if (begun)
     {
-        w = (int)swapW;
-        h = (int)swapH;
+        int w = 0, h = 0;
+        GetDisplayResolution(w, h);
+        uint32_t swapW = 0, swapH = 0;
+        TicoVulkan::GetSwapExtent(swapW, swapH);
+        if (swapW != 0 && swapH != 0)
+        {
+            w = (int)swapW;
+            h = (int)swapH;
+        }
+
+        RenderOverlayAndOSD(w, h);
+        t2 = NowUs();
+        TicoVulkan::EndFrame(); // FIFO present
     }
+    const uint64_t t3 = NowUs();
 
-    RenderOverlayAndOSD(w, h);
-    TicoVulkan::EndFrame(); // FIFO present == emu-thread pacing
+    // Taken only now: the emu thread may post the next frame once this one is submitted.
+    {
+        std::lock_guard<std::mutex> lock(g_presentSlot.Mutex);
+        g_presentSlot.Full = false;
+    }
+    g_presentSlot.Cond.notify_all();
 
-    static uint64_t s_presented = 0;
-    if ((++s_presented % 600) == 0)
-        LOG_WARN("CORE", "STANDALONE present #%llu (VI-paced)", (unsigned long long)s_presented);
+    s_beginUs += t1 - t0;
+    s_overlayUs += t2 - t1;
+    s_endUs += t3 - t2;
+
+    const uint64_t presented = ++g_standalonePresented;
+    if ((presented % 600) == 0)
+    {
+        LOG_WARN("CORE", "STANDALONE present #%llu avg-us (core 2): begin=%llu overlay=%llu end=%llu",
+                 (unsigned long long)presented,
+                 (unsigned long long)(s_beginUs / 600), (unsigned long long)(s_overlayUs / 600),
+                 (unsigned long long)(s_endUs / 600));
+        s_beginUs = s_overlayUs = s_endUs = 0;
+    }
 }
 
 static void TicoStandaloneRun()
 {
-    LOG_INFO("HOME", "Standalone: starting emu thread; main thread is UI-only");
+    LOG_INFO("HOME", "Standalone: starting emu thread; main thread presents and runs the UI");
     tico_standalone_start_emu();
+
+#ifdef __SWITCH__
+    // Opt-in sampling covers 600 frames after warm-up (loading and JIT compile).
+    // profile.on may hold the first frame to sample (default 600).
+    const std::string profileFlag = std::string(TicoConfig::ROM_FALLBACK_DIR) + "profile.on";
+    uint64_t profileStart = 600;
+    bool profiling = false;
+    if (FILE *flag = fopen(profileFlag.c_str(), "r"))
+    {
+        profiling = true;
+        unsigned long long start = 0;
+        if (fscanf(flag, "%llu", &start) == 1)
+            profileStart = start;
+        fclose(flag);
+    }
+    bool profileTaken = false;
+    if (profiling)
+        LOG_INFO("PROFILE", "profiler armed for frames %llu-%llu",
+                 (unsigned long long)profileStart, (unsigned long long)(profileStart + 600));
+    else
+        LOG_INFO("PROFILE", "profiler off (create %s to enable)", profileFlag.c_str());
+#endif
 
     Uint32 lastTime = SDL_GetTicks();
     while (g_running)
@@ -929,10 +1264,26 @@ static void TicoStandaloneRun()
         if (g_overlay)
             g_overlay->Update(deltaTime);
 
-        // Same audio diagnostics as the pump build (~every 10s at this tick).
+#ifdef __SWITCH__
+        if (profiling)
         {
-            static uint32_t hb = 0;
-            if ((++hb % 1000) == 0)
+            const uint64_t frames = g_standalonePresented.load(std::memory_order_relaxed);
+            if (Prof.Running && frames >= profileStart + 600)
+            {
+                StopProfiler();
+                profileTaken = true;
+            }
+            else if (!Prof.Running && !profileTaken && frames >= profileStart)
+                StartProfiler();
+        }
+#endif
+
+        // Same audio diagnostics as the pump build (~every 10s).
+        {
+            static uint64_t lastHeartbeat = NowUs();
+            if (NowUs() - lastHeartbeat >= 10000000)
+            {
+                lastHeartbeat = NowUs();
                 LOG_WARN("CORE", "AUDIO heartbeat: consumer_calls=%llu buffered=%zu stalled=%d stalls=%llu underruns=%u primes=%llu",
                          (unsigned long long)g_audio.GetConsumerCalls(),
                          g_audio.GetBufferedSamples(),
@@ -940,19 +1291,54 @@ static void TicoStandaloneRun()
                          (unsigned long long)g_audio.GetStallCount(),
                          g_audio.GetUnderrunCount(),
                          (unsigned long long)g_audio.GetPrimeCount());
+            }
         }
 
-#ifdef __SWITCH__
-        svcSleepThread(10000000ULL); // 10ms UI tick — off the frame path
-#else
-        SDL_Delay(10);
-#endif
+        PresentPostedFrame();
     }
 
+#ifdef __SWITCH__
+    StopProfiler();
+#endif
+    // Release an emu thread waiting to post a frame before stopping it.
+    StopPresentSlot();
     LOG_INFO("HOME", "Standalone: stopping emu thread");
     tico_standalone_stop_emu();
 }
 #endif // TICO_STANDALONE
+
+static bool HasN64Extension(const std::string &name)
+{
+    size_t dot = name.find_last_of('.');
+    if (dot == std::string::npos)
+        return false;
+    const char *ext = name.c_str() + dot;
+    return strcasecmp(ext, ".z64") == 0 || strcasecmp(ext, ".n64") == 0 || strcasecmp(ext, ".v64") == 0;
+}
+
+// Picks the alphabetically first N64 ROM in ROM_FALLBACK_DIR so the choice is stable.
+static std::string FindFallbackRom()
+{
+    const std::string baseDir = TicoConfig::ROM_FALLBACK_DIR;
+    mkdir(baseDir.c_str(), 0777);
+
+    DIR *dir = opendir(baseDir.c_str());
+    if (!dir)
+        return {};
+
+    std::string found;
+    while (dirent *entry = readdir(dir))
+    {
+        std::string name = entry->d_name;
+        if (!HasN64Extension(name))
+            continue;
+        if (found.empty() || name < found)
+            found = name;
+    }
+    closedir(dir);
+
+    return found.empty() ? found : baseDir + found;
+}
 
 int main(int argc, char *argv[])
 {
@@ -1053,7 +1439,7 @@ int main(int argc, char *argv[])
     std::string romPath = TicoConfig::TEST_ROM;
     bool romArgFound = false;
 
-    if (argc > 1 && argv[1])
+    if (argc > 1 && argv[1] && argv[1][0])
     {
         romPath = argv[1];
         romArgFound = true;
@@ -1062,7 +1448,18 @@ int main(int argc, char *argv[])
 
     if (!romArgFound)
     {
-        LOG_INFO("HOME", "No ROM argument provided. Using default: %s", romPath.c_str());
+        std::string fallbackRom = FindFallbackRom();
+        if (!fallbackRom.empty())
+        {
+            romPath = fallbackRom;
+            LOG_INFO("HOME", "No ROM argument provided. Using first ROM in %s: %s",
+                     TicoConfig::ROM_FALLBACK_DIR, romPath.c_str());
+        }
+        else
+        {
+            LOG_INFO("HOME", "No ROM argument and no ROM in %s. Using default: %s",
+                     TicoConfig::ROM_FALLBACK_DIR, romPath.c_str());
+        }
     }
 
     {

@@ -126,6 +126,10 @@ cothread_t retro_thread;
    retro_return() at the bottom of this file. */
 void tico_standalone_start_emu(void);
 void tico_standalone_stop_emu(void);
+#ifdef HAVE_LIBNX
+/* set by the emu thread once it runs, so the frontend profiler can sample it */
+Handle tico_emu_thread_handle = 0;
+#endif
 #endif
 
 int astick_deadzone;
@@ -496,6 +500,9 @@ static void* EmuThreadFunction(void* param)
 
 #ifdef HAVE_LIBNX
     pin_emulation_thread_for_switch();
+#ifdef TICO_STANDALONE
+    tico_emu_thread_handle = threadGetCurHandle();
+#endif
 #endif
 
     initializing = false;

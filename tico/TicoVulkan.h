@@ -26,6 +26,12 @@ void Shutdown();
 
 bool BeginFrame();
 void EndFrame();
+// Standalone: the emu thread owns the core's frame (sync) index and presents
+// happen on another thread. AdvanceCoreFrame() is called by the emu thread once
+// a frame is scanned out and returns that frame's index; BeginFrameAt() records
+// the present for it.
+uint32_t AdvanceCoreFrame();
+bool BeginFrameAt(uint32_t frameIndex);
 bool IsFrameInFlight();
 bool IsReady();
 

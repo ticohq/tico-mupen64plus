@@ -77,6 +77,10 @@ std::vector<VkFramebuffer> s_overlayFramebuffers;
 VkCommandPool s_commandPool = VK_NULL_HANDLE;
 std::vector<PerFrame> s_frames;
 uint32_t s_currentFrame = 0;
+// Frame being recorded by BeginFrame/EndFrame. Equal to s_currentFrame unless the
+// emu thread advances s_currentFrame itself (standalone).
+uint32_t s_presentFrame = 0;
+bool s_coreOwnsFrameIndex = false;
 uint32_t s_currentImage = 0;
 bool s_frameInFlight = false;
 bool s_ready = false;
@@ -84,6 +88,8 @@ bool s_overlayReady = false;
 VkDescriptorPool s_overlayDescriptorPool = VK_NULL_HANDLE;
 ImDrawData *s_overlayDrawData = nullptr;
 
+// Written by set_image on the core's thread, read by the present (another thread in standalone).
+std::mutex s_lastImageMutex;
 retro_vulkan_image s_lastImage = {};
 bool s_lastImageValid = false;
 uint32_t s_lastImageFrame = 0;
@@ -335,6 +341,7 @@ void RETRO_CALLCONV cb_set_image(void *, const retro_vulkan_image *image,
     PerFrame &f = s_frames[s_currentFrame];
     f.image = *image;
     f.imageValid = true;
+    std::lock_guard<std::mutex> lastImageLock(s_lastImageMutex);
     s_lastImage = *image;
     s_lastImageValid = image->create_info.image != VK_NULL_HANDLE;
     s_lastImageFrame = s_currentFrame;
@@ -805,6 +812,21 @@ void Shutdown()
 
 bool BeginFrame()
 {
+    return BeginFrameAt(s_currentFrame);
+}
+
+uint32_t AdvanceCoreFrame()
+{
+    s_coreOwnsFrameIndex = true;
+    if (s_frames.empty())
+        return 0;
+    const uint32_t done = s_currentFrame;
+    s_currentFrame = (s_currentFrame + 1) % (uint32_t)s_frames.size();
+    return done;
+}
+
+bool BeginFrameAt(uint32_t frameIndex)
+{
     if (!s_ready || s_frames.empty())
     {
         static bool loggedNotReady = false;
@@ -818,12 +840,13 @@ bool BeginFrame()
         return false;
     }
 
-    PerFrame &frame = s_frames[s_currentFrame];
+    s_presentFrame = frameIndex % (uint32_t)s_frames.size();
+    PerFrame &frame = s_frames[s_presentFrame];
     s_beginFrameCount++;
     const bool logThis = s_beginFrameCount <= 8;
     if (logThis)
         VK_LOG_INFO("BeginFrame #%llu fence-wait enter idx=%u",
-                    (unsigned long long)s_beginFrameCount, s_currentFrame);
+                    (unsigned long long)s_beginFrameCount, s_presentFrame);
     vkWaitForFences(s_device, 1, &frame.inflightFence, VK_TRUE, UINT64_MAX);
     if (logThis)
         VK_LOG_INFO("BeginFrame #%llu fence-wait exit", (unsigned long long)s_beginFrameCount);
@@ -845,9 +868,14 @@ bool BeginFrame()
         return false;
     }
 
-    frame.imageValid = false;
-    frame.coreCommandBuffers.clear();
-    frame.signalSemaphore = VK_NULL_HANDLE;
+    // In standalone the core filled this frame (image, semaphores) before the
+    // present started; it is cleared at the end of EndFrame instead.
+    if (!s_coreOwnsFrameIndex)
+    {
+        frame.imageValid = false;
+        frame.coreCommandBuffers.clear();
+        frame.signalSemaphore = VK_NULL_HANDLE;
+    }
 
     vkResetCommandBuffer(frame.cmd, 0);
     VkCommandBufferBeginInfo beginInfo = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
@@ -864,7 +892,7 @@ void EndFrame()
     if (!s_frameInFlight || s_frames.empty())
         return;
 
-    PerFrame &frame = s_frames[s_currentFrame];
+    PerFrame &frame = s_frames[s_presentFrame];
     VkImage swapImage = s_swapImages[s_currentImage];
 
     TransitionLayout(frame.cmd, swapImage,
@@ -874,20 +902,28 @@ void EndFrame()
 
     const retro_vulkan_image *sourceImage = nullptr;
     bool reusingLastImage = false;
+    retro_vulkan_image lastImage = {};
+    uint32_t lastImageFrame = 0;
     if (frame.imageValid && frame.image.create_info.image != VK_NULL_HANDLE)
         sourceImage = &frame.image;
-    else if (s_lastImageValid && s_lastImage.create_info.image != VK_NULL_HANDLE)
+    else
     {
-        sourceImage = &s_lastImage;
-        reusingLastImage = true;
+        std::lock_guard<std::mutex> lastImageLock(s_lastImageMutex);
+        if (s_lastImageValid && s_lastImage.create_info.image != VK_NULL_HANDLE)
+        {
+            lastImage = s_lastImage;
+            lastImageFrame = s_lastImageFrame;
+            sourceImage = &lastImage;
+            reusingLastImage = true;
+        }
     }
 
     if (sourceImage)
     {
-        if (reusingLastImage && s_lastImageFrame < s_frames.size() &&
-            s_lastImageFrame != s_currentFrame && s_frames[s_lastImageFrame].inflightFence)
+        if (reusingLastImage && lastImageFrame < s_frames.size() &&
+            lastImageFrame != s_presentFrame && s_frames[lastImageFrame].inflightFence)
         {
-            VkFence fence = s_frames[s_lastImageFrame].inflightFence;
+            VkFence fence = s_frames[lastImageFrame].inflightFence;
             vkWaitForFences(s_device, 1, &fence, VK_TRUE, UINT64_MAX);
         }
 
@@ -927,7 +963,7 @@ void EndFrame()
         {
             VK_LOG_WARN("No Vulkan source image on present #%llu frame=%u set_image_count=%llu last_valid=%d",
                         (unsigned long long)s_presentCount,
-                        s_currentFrame,
+                        s_presentFrame,
                         (unsigned long long)s_setImageCount,
                         s_lastImageValid ? 1 : 0);
         }
@@ -1026,7 +1062,14 @@ void EndFrame()
 
     s_presentCount++;
     s_frameInFlight = false;
-    s_currentFrame = (s_currentFrame + 1) % (uint32_t)s_frames.size();
+    if (s_coreOwnsFrameIndex)
+    {
+        frame.imageValid = false;
+        frame.coreCommandBuffers.clear();
+        frame.signalSemaphore = VK_NULL_HANDLE;
+    }
+    else
+        s_currentFrame = (s_currentFrame + 1) % (uint32_t)s_frames.size();
 }
 
 bool IsFrameInFlight() { return s_frameInFlight; }
