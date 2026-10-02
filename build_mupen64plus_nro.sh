@@ -1,5 +1,15 @@
 #!/bin/bash
 
+# Uses a local devkitPro install when there is one, otherwise the switch-dev Docker image.
+SWITCH_DEV_IMAGE="${SWITCH_DEV_IMAGE:-ghcr.io/autorunhq/switch-dev:2026.10.01}"
+if [ ! -d /opt/devkitpro/devkitA64 ]; then
+    ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
+    exec docker run --rm -v "$ROOT_DIR:$ROOT_DIR" -w "$ROOT_DIR" \
+        -e TICO_STANDALONE="${TICO_STANDALONE:-0}" \
+        -e MESA_SOURCE_ROOT -e MESA_NVK_DIR -e SWITCH_VULKAN_LIBRARY \
+        "$SWITCH_DEV_IMAGE" bash "$ROOT_DIR/build_mupen64plus_nro.sh" "$@"
+fi
+
 export DEVKITPRO=/opt/devkitpro
 export DEVKITARM=$DEVKITPRO/devkitARM
 export DEVKITPPC=$DEVKITPRO/devkitPPC
@@ -53,6 +63,7 @@ USE_CUSTOM_MESA=0
 MESA_ARCHIVES=()
 USE_VULKAN_FRONTEND=1
 VULKAN_ARCHIVES=()
+NVK_PORTLIBS_LIBS=""
 
 if [ -z "$SWITCH_VULKAN_LIBRARY" ]; then
     if [ -f "/opt/nvk-switch/lib/libvulkan.a" ]; then
@@ -61,11 +72,30 @@ if [ -z "$SWITCH_VULKAN_LIBRARY" ]; then
         SWITCH_VULKAN_LIBRARY="$MESA_NVK_DIR/src/nouveau/vulkan/libvulkan.a"
     elif [ -n "$MESA_BUILD_ROOT" ] && [ -f "$MESA_BUILD_ROOT/src/nouveau/vulkan/libvulkan.a" ]; then
         SWITCH_VULKAN_LIBRARY="$MESA_BUILD_ROOT/src/nouveau/vulkan/libvulkan.a"
+    elif [ -f "$PORTLIBS/lib/libvulkan.a" ]; then
+        # switch-dev image ships NVK in portlibs
+        SWITCH_VULKAN_LIBRARY="$PORTLIBS/lib/libvulkan.a"
     fi
 fi
 
 if [ -n "$SWITCH_VULKAN_LIBRARY" ] && [ -f "$SWITCH_VULKAN_LIBRARY" ]; then
     VULKAN_ARCHIVES=("$SWITCH_VULKAN_LIBRARY")
+    if [ "$SWITCH_VULKAN_LIBRARY" = "$PORTLIBS/lib/libvulkan.a" ]; then
+        # The portlibs NVK also exports global vkXxx entry points, which collide with
+        # volk's (-fcommon) function pointers. Localize them; tico only needs vk_icd*.
+        NVK_CACHE_DIR="$ROOT_DIR/build_nvk"
+        mkdir -p "$NVK_CACHE_DIR"
+        PATCHED_VULKAN="$NVK_CACHE_DIR/libvulkan_nvk.a"
+        if [ ! -f "$PATCHED_VULKAN" ] || [ "$SWITCH_VULKAN_LIBRARY" -nt "$PATCHED_VULKAN" ]; then
+            aarch64-none-elf-nm -g --defined-only "$SWITCH_VULKAN_LIBRARY" 2>/dev/null \
+                | awk '$3 ~ /^vk[A-Z]/ {print $3}' | sort -u > "$NVK_CACHE_DIR/libvulkan_nvk.syms"
+            aarch64-none-elf-objcopy --localize-symbols="$NVK_CACHE_DIR/libvulkan_nvk.syms" \
+                "$SWITCH_VULKAN_LIBRARY" "$PATCHED_VULKAN"
+        fi
+        VULKAN_ARCHIVES=("$PATCHED_VULKAN")
+        NVK_PORTLIBS_LIBS="-Wl,--start-group -lEGL -lglapi -lmesa_util_c11 -lblake3 -lmesa_util"
+        NVK_PORTLIBS_LIBS="$NVK_PORTLIBS_LIBS -lmesa_util_simd -lxmlconfig -lexpat -Wl,--end-group"
+    fi
     echo "Using Switch Vulkan archive: $SWITCH_VULKAN_LIBRARY"
 else
     echo "Error: Switch Vulkan archive not found."
@@ -150,7 +180,7 @@ CC="${DEVKITA64}/bin/aarch64-none-elf-gcc"
 CXX="${DEVKITA64}/bin/aarch64-none-elf-g++"
 AR="${DEVKITA64}/bin/aarch64-none-elf-ar"
 
-COMMON_FLAGS="-march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE -O0 -g"
+COMMON_FLAGS="-march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE -O2 -g -fno-omit-frame-pointer"
 COMMON_FLAGS="$COMMON_FLAGS -ffunction-sections -fdata-sections -D__SWITCH__ -DHAVE_LIBNX"
 COMMON_FLAGS="$COMMON_FLAGS -fno-lto"
 if [ "${TICO_ENABLE_LOGGING:-1}" -eq 0 ]; then
@@ -273,11 +303,15 @@ LINK_FLAGS="$LINK_FLAGS -Wl,--gc-sections -Wl,-Map,$BUILD_DIR/mupen64plus_tico.m
 LINK_LIBS="-L$PORTLIBS/lib -L$LIBNX/lib"
 LINK_LIBS="$LINK_LIBS -lSDL2_mixer -lmpg123 -lmodplug -lopusfile -lopus -lvorbisidec -logg -lSDL2"
 if [ "$USE_VULKAN_FRONTEND" -eq 1 ]; then
-    LINK_LIBS="$LINK_LIBS -ldrm_nouveau"
+    # the switch-dev image's NVK carries its own winsys and has no libdrm_nouveau
+    if [ -f "$PORTLIBS/lib/libdrm_nouveau.a" ]; then
+        LINK_LIBS="$LINK_LIBS -ldrm_nouveau"
+    fi
 else
     LINK_LIBS="$LINK_LIBS -lEGL -lglapi -ldrm_nouveau"
 fi
 
+LINK_LIBS="$LINK_LIBS $NVK_PORTLIBS_LIBS"
 LINK_LIBS="$LINK_LIBS -lcurl -lmbedtls -lmbedx509 -lmbedcrypto -lz -lzstd"
 LINK_LIBS="$LINK_LIBS -lnx -lm -lstdc++ -lpthread"
 

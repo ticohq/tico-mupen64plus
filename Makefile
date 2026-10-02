@@ -213,6 +213,8 @@ else ifeq ($(platform), libnx)
    CPUOPTS := -g -march=armv8-a+crc -mtune=cortex-a57 -mtp=soft -mcpu=cortex-a57+crc+fp+simd
    PLATCFLAGS = -O3 -ffast-math -funsafe-math-optimizations -fPIE -I$(PORTLIBS)/include/ -I$(PORTLIBS)/include/freetype2 -I$(LIBNX)/include/ -ffunction-sections -fdata-sections -ftls-model=local-exec -specs=$(LIBNX)/switch.specs
    PLATCFLAGS += $(INCLUDE) -D__SWITCH__=1 -DSWITCH -DHAVE_LIBNX -D_GLIBCXX_USE_C99_MATH_TR1 -D_LDBL_EQ_DBL -funroll-loops #-DM64P_NETPLAY
+   # emit .d files so header edits rebuild their users (see -include below)
+   PLATCFLAGS += -MMD -MP
    CXXFLAGS += -fno-rtti -std=gnu++14
    COREFLAGS += -DOS_LINUX -DEGL -DVK_USE_PLATFORM_VI_NN
    GLES = 0
@@ -682,6 +684,8 @@ else
 	LDFLAGS    += $(fpic) -O3 $(CPUOPTS) $(PLATCFLAGS) $(CPUFLAGS)
 endif
 
+# the .d files define rules; keep "all" the default goal
+.DEFAULT_GOAL := all
 -include $(OBJECTS:.o=.d)
 all: $(TARGET)
 $(TARGET): $(OBJECTS)

@@ -15,3 +15,13 @@ linker.list
 build_tico
 *.a
 RMG
+build_nvk
+build_tico_standalone
+.tico_build_mode
+.DS_Store
+# device logs and profiles copied off the SD card
+/logs/
+/mupen64plus.txt
+/profile.on
+/profile.txt
+/stacks.txt
