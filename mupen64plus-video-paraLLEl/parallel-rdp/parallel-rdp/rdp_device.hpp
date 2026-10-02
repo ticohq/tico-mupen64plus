@@ -252,15 +252,26 @@ private:
 	uint64_t timeline_value = 0;
 	uint64_t thread_timeline_value = 0;
 
+	// Imported RDRAM whose memory type is not host-coherent (Tegra: CPU-cached,
+	// GPU not snooping). The CPU cache has to be cleaned before the GPU reads it
+	// and cleaned + invalidated after the GPU wrote it.
+	struct HostCacheRange
+	{
+		uint8_t *ptr = nullptr;
+		size_t size = 0;
+	};
+	HostCacheRange rdram_cache_range;
+
 	struct FenceExecutor
 	{
-		explicit inline FenceExecutor(Vulkan::Device *device_, uint64_t *ptr)
-			: device(device_), value(ptr)
+		explicit inline FenceExecutor(Vulkan::Device *device_, uint64_t *ptr, const HostCacheRange *range)
+			: device(device_), value(ptr), rdram_cache_range(range)
 		{
 		}
 
 		Vulkan::Device *device;
 		uint64_t *value;
+		const HostCacheRange *rdram_cache_range;
 		bool is_sentinel(const CoherencyOperation &work) const;
 		void perform_work(CoherencyOperation &work);
 		void notify_work_locked(const CoherencyOperation &work);
@@ -277,6 +288,8 @@ private:
 	friend class Renderer;
 
 	void enqueue_coherency_operation(CoherencyOperation &&op);
+	// Writes CPU-cached RDRAM back to memory before GPU work that reads it.
+	void clean_rdram_cache();
 	void drain_command_ring();
 	void decode_triangle_setup(TriangleSetup &setup, const uint32_t *words) const;
 

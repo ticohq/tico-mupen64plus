@@ -1118,7 +1118,13 @@ bool Context::create_device(VkPhysicalDevice gpu_, VkSurfaceKHR surface, const c
 
 	device_info.pNext = &features;
 
+#ifdef __SWITCH__
+	// Host pointer import only needs core 1.1 external memory, not the fd handle
+	// extensions, which NVK on Horizon does not have.
+	if (has_extension(VK_EXT_EXTERNAL_MEMORY_HOST_EXTENSION_NAME))
+#else
 	if (ext.supports_external && has_extension(VK_EXT_EXTERNAL_MEMORY_HOST_EXTENSION_NAME))
+#endif
 	{
 		ext.supports_external_memory_host = true;
 		enabled_extensions.push_back(VK_EXT_EXTERNAL_MEMORY_HOST_EXTENSION_NAME);

@@ -2426,6 +2426,7 @@ void Renderer::submit_to_queue()
 
 	if (is_host_coherent)
 	{
+		processor.clean_rdram_cache();
 		device->submit(stream.cmd, &fence);
 		if (pending_host_visible_render_passes)
 			enqueue_fence_wait(fence);

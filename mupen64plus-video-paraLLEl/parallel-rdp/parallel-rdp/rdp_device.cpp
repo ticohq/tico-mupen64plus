@@ -32,6 +32,8 @@
 // Minimal libnx declarations to pin the timeline worker thread without pulling
 // <switch.h> (whose global-namespace typedefs clash with Granite headers).
 extern "C" uint32_t svcSetThreadCoreMask(uint32_t handle, int32_t preferred_core, uint64_t affinity_mask);
+extern "C" void armDCacheClean(void *addr, size_t size);
+extern "C" void armDCacheFlush(void *addr, size_t size);
 #define TICO_CUR_THREAD_HANDLE 0xFFFF8000u
 #endif
 
@@ -53,9 +55,9 @@ CommandProcessor::CommandProcessor(Vulkan::Device &device_, void *rdram_ptr,
                                    CommandProcessorFlags flags_)
 	: device(device_), rdram_offset(rdram_offset_), rdram_size(rdram_size_), flags(flags_), renderer(*this),
 #ifdef PARALLEL_RDP_SHADER_DIR
-	  timeline_worker(Granite::Global::create_thread_context(), FenceExecutor{&device, &thread_timeline_value})
+	  timeline_worker(Granite::Global::create_thread_context(), FenceExecutor{&device, &thread_timeline_value, &rdram_cache_range})
 #else
-	  timeline_worker(FenceExecutor{&device, &thread_timeline_value})
+	  timeline_worker(FenceExecutor{&device, &thread_timeline_value, &rdram_cache_range})
 #endif
 {
 	BufferCreateInfo info = {};
@@ -94,6 +96,21 @@ CommandProcessor::CommandProcessor(Vulkan::Device &device_, void *rdram_ptr,
 			rdram = device.create_imported_host_buffer(info, VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT, rdram_ptr);
 			if (!rdram)
 				LOGE("Failed to allocate RDRAM with VK_EXT_external_memory_host.\n");
+#ifdef __SWITCH__
+			else
+			{
+				uint32_t type = rdram->get_allocation().get_memory_type();
+				bool coherent = (device.get_memory_properties().memoryTypes[type].propertyFlags &
+				                 VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) != 0;
+				if (!coherent)
+				{
+					rdram_cache_range.ptr = static_cast<uint8_t *>(rdram_ptr);
+					rdram_cache_range.size = import_size;
+				}
+				LOGI("RDRAM imported via VK_EXT_external_memory_host (memory type %u, %s).\n",
+				     type, coherent ? "coherent" : "cached, explicit cache maintenance");
+			}
+#endif
 		}
 
 		if (!rdram)
@@ -1109,6 +1126,8 @@ Vulkan::ImageHandle CommandProcessor::scanout(const ScanoutOptions &opts, VkImag
 			vi.scanout_memory_range(offset, length);
 			renderer.resolve_coherency_external(offset, length);
 		}
+		// VI reads RDRAM on the GPU; CPU-rendered framebuffers have to reach memory.
+		clean_rdram_cache();
 	}
 	renderer.unlock_command_processing();
 
@@ -1239,8 +1258,8 @@ void CommandProcessor::FenceExecutor::perform_work(CoherencyOperation &work)
 {
 #ifdef __SWITCH__
 	// This worker thread does the GPU fence waits and the RDRAM coherency memcpys
-	// (heavy here: NVK lacks VK_EXT_external_memory_host, so RDRAM is mirrored by CPU
-	// copy every frame). It is created from the emulation thread and inherits its core
+	// (heavy when RDRAM is not imported via VK_EXT_external_memory_host and is mirrored
+	// by CPU copy every frame). It is created from the emulation thread and inherits its core
 	// (core 1 on the libretro Switch path), where it competes with the emulator for CPU
 	// on every SyncFull. Pin it to core 0, which is otherwise idle in that layout
 	// (emu = core 1, audio = core 2).
@@ -1254,7 +1273,15 @@ void CommandProcessor::FenceExecutor::perform_work(CoherencyOperation &work)
 	}
 #endif
 	if (work.fence)
+	{
 		work.fence->wait();
+#ifdef __SWITCH__
+		// The GPU may have written RDRAM; drop stale CPU lines before the emulator
+		// is released by the timeline. Clean+invalidate keeps concurrent CPU writes.
+		if (rdram_cache_range->ptr)
+			armDCacheFlush(rdram_cache_range->ptr, rdram_cache_range->size);
+#endif
+	}
 
 	if (work.unlock_cookie)
 		work.unlock_cookie->fetch_sub(1, std::memory_order_relaxed);
@@ -1278,6 +1305,14 @@ void CommandProcessor::FenceExecutor::perform_work(CoherencyOperation &work)
 		_mm_mfence();
 #endif
 	}
+}
+
+void CommandProcessor::clean_rdram_cache()
+{
+#ifdef __SWITCH__
+	if (rdram_cache_range.ptr)
+		armDCacheClean(rdram_cache_range.ptr, rdram_cache_range.size);
+#endif
 }
 
 void CommandProcessor::enqueue_coherency_operation(CoherencyOperation &&op)
