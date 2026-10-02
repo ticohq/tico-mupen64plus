@@ -1,4 +1,7 @@
 #include "../state.hpp"
+#if defined(__ARM_NEON) || defined(__aarch64__)
+#include <arm_neon.h>
+#endif
 
 #ifdef TRACE_COP2
 #include <stdio.h>
@@ -11,21 +14,43 @@ extern "C"
 {
 	// Using mostly Ares' implementation as a base here
 
+	// Byte i of a vector register (big-endian element order) lives at host byte
+	// MES(i) of the little-endian uint16_t lanes, so these are plain byte accesses
+	// rather than a read-modify-write of the whole lane.
 	static inline uint8_t byteFromHalfWords(const uint16_t *arr, unsigned i)
 	{
-		return (i & 1) ?
-			(uint8_t)(arr[i >> 1] & 0xff) :
-			(uint8_t)(arr[i >> 1] >> 8);
+		return reinterpret_cast<const uint8_t *>(arr)[MES(i)];
 	}
 	
 	static inline void writeByteToHalfWords(uint16_t *arr, unsigned i, uint8_t b)
 	{
-		const unsigned n = i >> 1;
-		if (i & 1)
-			arr[n] = (arr[n] & 0xff00) | (uint16_t)b;
-		else
-			arr[n] = (arr[n] & 0xff) | ((uint16_t)b << 8);
+		reinterpret_cast<uint8_t *>(arr)[MES(i)] = b;
 	}
+
+#if defined(__ARM_NEON) || defined(__aarch64__)
+	// DMEM byte a is host byte BES(a) and register byte i is host byte MES(i).
+	// For a 4-byte aligned run starting at register byte 0 or 8, host register
+	// byte k therefore comes from host DMEM byte k ^ 2: the two halfwords of
+	// every 32-bit word swap, which is vrev32 on 16-bit lanes.
+	static inline void copy16_dmem_to_reg(uint16_t *reg, const uint32_t *dmem, unsigned addr)
+	{
+		uint16x8_t v = vld1q_u16(reinterpret_cast<const uint16_t *>(reinterpret_cast<const uint8_t *>(dmem) + addr));
+		vst1q_u16(reg, vrev32q_u16(v));
+	}
+
+	static inline void copy16_reg_to_dmem(uint32_t *dmem, unsigned addr, const uint16_t *reg)
+	{
+		uint16x8_t v = vrev32q_u16(vld1q_u16(reg));
+		vst1q_u16(reinterpret_cast<uint16_t *>(reinterpret_cast<uint8_t *>(dmem) + addr), v);
+	}
+
+	static inline void copy8_dmem_to_reg(uint16_t *reg, const uint32_t *dmem, unsigned addr)
+	{
+		uint16x4_t v = vld1_u16(reinterpret_cast<const uint16_t *>(reinterpret_cast<const uint8_t *>(dmem) + addr));
+		vst1_u16(reg, vrev32_u16(v));
+	}
+#define RSP_LS_NEON 1
+#endif
 	
 	// Load 8-bit
 	void RSP_LBV(RSP::CPUState *rsp, unsigned rt, unsigned e, int offset, unsigned base)
@@ -104,6 +129,13 @@ extern "C"
 	{
 		TRACE_LS(LDV);
 		unsigned addr = rsp->sr[base] + offset * 8;
+#ifdef RSP_LS_NEON
+		if ((e & 7) == 0 && (addr & 7) == 0)
+		{
+			copy8_dmem_to_reg(rsp->cp2.regs[rt].e + (e >> 1), rsp->dmem, addr & 0xfff);
+			return;
+		}
+#endif
 		const unsigned end = (e > 8) ? 16 : (e + 8);
 		for (unsigned i = e; i < end; i++)
 			writeByteToHalfWords(rsp->cp2.regs[rt].e, i & 0xf, READ_MEM_U8(rsp->dmem, addr++ & 0xfff));
@@ -314,6 +346,13 @@ extern "C"
 	{
 		TRACE_LS(LQV);
 		unsigned addr = rsp->sr[base] + offset * 16;
+#ifdef RSP_LS_NEON
+		if (e == 0 && (addr & 0xf) == 0)
+		{
+			copy16_dmem_to_reg(rsp->cp2.regs[rt].e, rsp->dmem, addr & 0xfff);
+			return;
+		}
+#endif
 		unsigned end = 16 + e - (addr & 0xf);
 		if (end > 16) end = 16;
 
@@ -325,6 +364,13 @@ extern "C"
 	{
 		TRACE_LS(SQV);
 		unsigned addr = (rsp->sr[base] + offset * 16) & 0xfff;
+#ifdef RSP_LS_NEON
+		if (e == 0 && (addr & 0xf) == 0)
+		{
+			copy16_reg_to_dmem(rsp->dmem, addr, rsp->cp2.regs[rt].e);
+			return;
+		}
+#endif
 		
 		const unsigned end = e + (16 - (addr & 15));
 		for (unsigned i = e; i < end; i++)
