@@ -146,6 +146,10 @@ void Image::disown_memory_allocation()
 
 Image::~Image()
 {
+	if (owns_image && owns_memory_allocation && alloc.get_memory() &&
+	    device->recycle_image(image, alloc, create_info, internal_sync))
+		return;
+
 	if (owns_image)
 	{
 		if (internal_sync)

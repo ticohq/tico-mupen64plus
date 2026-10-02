@@ -2043,6 +2043,7 @@ Device::~Device()
 
 	framebuffer_allocator.clear();
 	transient_allocator.clear();
+	clear_image_cache();
 
 	deinit_timeline_semaphores();
 }
@@ -2330,6 +2331,117 @@ void Device::reset_fence_nolock(VkFence fence, bool observed_wait)
 PipelineEvent Device::request_pipeline_event()
 {
 	return PipelineEvent(handle_pool.events.allocate(this, managers.event.request_cleared_event()));
+}
+
+bool Device::image_is_recyclable(const ImageCreateInfo &info)
+{
+	return (info.domain == ImageDomain::Physical || info.domain == ImageDomain::Transient) &&
+	       info.pnext == nullptr && !info.external && info.num_memory_aliases == 0 &&
+	       info.ycbcr_conversion == nullptr &&
+	       (info.misc & IMAGE_MISC_EXTERNAL_MEMORY_BIT) == 0;
+}
+
+static bool recycled_image_matches(const ImageCreateInfo &a, const ImageCreateInfo &b)
+{
+	return a.domain == b.domain && a.width == b.width && a.height == b.height && a.depth == b.depth &&
+	       a.levels == b.levels && a.format == b.format && a.type == b.type && a.layers == b.layers &&
+	       a.usage == b.usage && a.samples == b.samples && a.flags == b.flags && a.misc == b.misc;
+}
+
+bool Device::recycle_image(VkImage image, const DeviceAllocation &alloc, const ImageCreateInfo &info,
+                           bool internal_sync)
+{
+	if (internal_sync)
+		return recycle_image_nolock(image, alloc, info);
+	LOCK();
+	return recycle_image_nolock(image, alloc, info);
+}
+
+bool Device::recycle_image_nolock(VkImage image, const DeviceAllocation &alloc, const ImageCreateInfo &info)
+{
+	if (!image_is_recyclable(info) || !alloc.get_memory())
+		return false;
+	frame().recycled_images.push_back({ info, image, alloc, 0 });
+	return true;
+}
+
+bool Device::take_recycled_image(const ImageCreateInfo &info, VkImage *image, DeviceAllocation *alloc)
+{
+	if (!image_is_recyclable(info))
+		return false;
+	std::lock_guard<std::mutex> holder{image_cache_lock};
+	for (auto itr = image_cache.begin(); itr != image_cache.end(); ++itr)
+	{
+		if (recycled_image_matches(itr->info, info))
+		{
+			*image = itr->image;
+			*alloc = itr->alloc;
+			image_cache.erase(itr);
+			return true;
+		}
+	}
+	return false;
+}
+
+// Called from PerFrame::begin once the frame's fences passed.
+void Device::retire_recycled_images(std::vector<RecycledImage> &images)
+{
+	// Images not reused within this many frames, or beyond the cap, are destroyed.
+	constexpr uint64_t max_age = 120;
+	constexpr size_t max_cached = 32;
+
+	std::vector<RecycledImage> expired;
+	{
+		std::lock_guard<std::mutex> holder{image_cache_lock};
+		image_cache_frame++;
+		for (auto &img : images)
+		{
+			img.retired_frame = image_cache_frame;
+			image_cache.push_back(img);
+		}
+		images.clear();
+
+		auto keep = std::remove_if(image_cache.begin(), image_cache.end(), [&](const RecycledImage &img) {
+			bool old = image_cache_frame - img.retired_frame > max_age;
+			if (old)
+				expired.push_back(img);
+			return old;
+		});
+		image_cache.erase(keep, image_cache.end());
+
+		if (image_cache.size() > max_cached)
+		{
+			size_t excess = image_cache.size() - max_cached;
+			expired.insert(expired.end(), image_cache.begin(), image_cache.begin() + excess);
+			image_cache.erase(image_cache.begin(), image_cache.begin() + excess);
+		}
+	}
+
+	if (expired.empty())
+		return;
+
+#ifdef GRANITE_VULKAN_MT
+	std::lock_guard<std::mutex> holder{lock.memory_lock};
+#endif
+	for (auto &img : expired)
+	{
+		table->vkDestroyImage(device, img.image, nullptr);
+		img.alloc.free_immediate(managers.memory);
+	}
+}
+
+void Device::clear_image_cache()
+{
+	std::vector<RecycledImage> all;
+	{
+		std::lock_guard<std::mutex> holder{image_cache_lock};
+		all.swap(image_cache);
+	}
+	for (auto &img : all)
+	{
+		table->vkDestroyImage(device, img.image, nullptr);
+		img.alloc.free_immediate(managers.memory);
+	}
 }
 
 void Device::destroy_image_nolock(VkImage image)
@@ -2784,6 +2896,20 @@ void Device::PerFrame::begin()
 		table.vkDestroyBufferView(vkdevice, view, nullptr);
 	for (auto &image : destroyed_images)
 		table.vkDestroyImage(vkdevice, image, nullptr);
+	if (!recycled_images.empty())
+	{
+		if (in_destructor)
+		{
+			for (auto &img : recycled_images)
+			{
+				table.vkDestroyImage(vkdevice, img.image, nullptr);
+				img.alloc.free_immediate(managers.memory);
+			}
+			recycled_images.clear();
+		}
+		else
+			device.retire_recycled_images(recycled_images);
+	}
 	for (auto &buffer : destroyed_buffers)
 		table.vkDestroyBuffer(vkdevice, buffer, nullptr);
 	for (auto &semaphore : destroyed_semaphores)
@@ -3918,22 +4044,26 @@ ImageHandle Device::create_image_from_staging_buffer(const ImageCreateInfo &crea
 		info.pNext = &external_info;
 	}
 
-	if (table->vkCreateImage(device, &info, nullptr, &holder.image) != VK_SUCCESS)
-	{
-		LOGE("Failed to create image in vkCreateImage.\n");
-		return ImageHandle(nullptr);
-	}
-
-	if (!allocate_image_memory(&holder.allocation, create_info, holder.image, info.tiling))
-	{
-		LOGE("Failed to allocate memory for image.\n");
-		return ImageHandle(nullptr);
-	}
-
 	auto tmpinfo = create_info;
 	tmpinfo.usage = info.usage;
 	tmpinfo.flags = info.flags;
 	tmpinfo.levels = info.mipLevels;
+
+	// A recycled image starts in UNDEFINED like a new one (info.initialLayout).
+	if (!take_recycled_image(tmpinfo, &holder.image, &holder.allocation))
+	{
+		if (table->vkCreateImage(device, &info, nullptr, &holder.image) != VK_SUCCESS)
+		{
+			LOGE("Failed to create image in vkCreateImage.\n");
+			return ImageHandle(nullptr);
+		}
+
+		if (!allocate_image_memory(&holder.allocation, create_info, holder.image, info.tiling))
+		{
+			LOGE("Failed to allocate memory for image.\n");
+			return ImageHandle(nullptr);
+		}
+	}
 
 	bool has_view = (info.usage & (VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
 	                               VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT |

@@ -552,6 +552,24 @@ private:
 		unsigned counter = 0;
 	} lock;
 
+	// Images released by a frame context are kept for reuse once that context's
+	// fences passed, instead of being destroyed: creating an image costs GPU VA
+	// alloc/map IPC on Horizon, and paraLLEl's VI recreates several every frame.
+	struct RecycledImage
+	{
+		ImageCreateInfo info;
+		VkImage image;
+		DeviceAllocation alloc;
+		uint64_t retired_frame;
+	};
+	std::mutex image_cache_lock;
+	std::vector<RecycledImage> image_cache;
+	uint64_t image_cache_frame = 0;
+	static bool image_is_recyclable(const ImageCreateInfo &info);
+	bool take_recycled_image(const ImageCreateInfo &info, VkImage *image, DeviceAllocation *alloc);
+	void retire_recycled_images(std::vector<RecycledImage> &images);
+	void clear_image_cache();
+
 	struct PerFrame
 	{
 		PerFrame(Device *device, unsigned index);
@@ -588,6 +606,7 @@ private:
 		std::vector<VkImageView> destroyed_image_views;
 		std::vector<VkBufferView> destroyed_buffer_views;
 		std::vector<VkImage> destroyed_images;
+		std::vector<RecycledImage> recycled_images;
 		std::vector<VkBuffer> destroyed_buffers;
 		std::vector<VkDescriptorPool> destroyed_descriptor_pools;
 		Util::SmallVector<CommandBufferHandle> submissions[QUEUE_INDEX_COUNT];
@@ -745,6 +764,9 @@ private:
 
 	void destroy_buffer_nolock(VkBuffer buffer);
 	void destroy_image_nolock(VkImage image);
+	// Takes over image + memory when the image can be recycled; false otherwise.
+	bool recycle_image(VkImage image, const DeviceAllocation &alloc, const ImageCreateInfo &info, bool internal_sync);
+	bool recycle_image_nolock(VkImage image, const DeviceAllocation &alloc, const ImageCreateInfo &info);
 	void destroy_image_view_nolock(VkImageView view);
 	void destroy_buffer_view_nolock(VkBufferView view);
 	void destroy_pipeline_nolock(VkPipeline pipeline);
