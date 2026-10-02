@@ -23,6 +23,7 @@
 #pragma once
 
 #include <thread>
+#include <atomic>
 #include <mutex>
 #include <condition_variable>
 #include <vector>
@@ -46,6 +47,8 @@ public:
 	void drain();
 
 	void enqueue_command(unsigned num_words, const uint32_t *words);
+	// packets is a sequence of [num_words, words...]; taken under one lock.
+	void enqueue_commands(const uint32_t *packets, size_t total_words);
 
 private:
 	CommandProcessor *processor = nullptr;
@@ -54,12 +57,22 @@ private:
 	std::condition_variable cond;
 
 	std::vector<uint32_t> ring;
-	uint64_t write_count = 0;
-	uint64_t read_count = 0;
-	uint64_t completed_count = 0;
+	// Lock-free single producer / single consumer: the lock and cond are only
+	// used to sleep, and a side only signals when the other one announced it
+	// is (about to be) asleep.
+	std::atomic<uint64_t> write_count{0};
+	std::atomic<uint64_t> read_count{0};
+	std::atomic<uint64_t> completed_count{0};
+	std::atomic<bool> consumer_sleeping{false};
+	std::atomic<bool> producer_waiting{false};
+	std::atomic<bool> drain_waiting{false};
+	void wake_if(const std::atomic<bool> &waiting);
 
 	void thread_loop();
 	void teardown_thread();
+	// Producer side: waits until num_words fit, returns read_count at that point.
+	uint64_t wait_for_space(size_t num_words);
+	void publish(uint64_t new_write_count);
 #ifdef PARALLEL_RDP_SHADER_DIR
 	Granite::Global::GlobalManagersHandle global_handles;
 #endif

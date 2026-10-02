@@ -178,7 +178,7 @@ CommandProcessor::CommandProcessor(Vulkan::Device &device_, void *rdram_ptr,
 #ifdef PARALLEL_RDP_SHADER_DIR
 				Granite::Global::create_thread_context(),
 #endif
-				this, 4 * 1024);
+				this, 64 * 1024);
 	}
 
 	if (const char *env = getenv("PARALLEL_RDP_BENCH"))
@@ -918,6 +918,21 @@ void CommandProcessor::enqueue_command(unsigned num_words, const uint32_t *words
 		else
 			dump_writer->emit_command(cmd_id, words, num_words);
 	}
+}
+
+void CommandProcessor::enqueue_commands(const uint32_t *packets, size_t total_words)
+{
+	if (dump_writer || single_threaded_processing)
+	{
+		size_t pos = 0;
+		while (pos < total_words)
+		{
+			enqueue_command(packets[pos], packets + pos + 1);
+			pos += packets[pos] + 1;
+		}
+	}
+	else
+		ring.enqueue_commands(packets, total_words);
 }
 
 void CommandProcessor::enqueue_command_direct(unsigned, const uint32_t *words)

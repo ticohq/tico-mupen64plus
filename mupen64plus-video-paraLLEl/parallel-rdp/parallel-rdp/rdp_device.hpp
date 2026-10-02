@@ -137,6 +137,8 @@ public:
 
 	// Queues up state and drawing commands.
 	void enqueue_command(unsigned num_words, const uint32_t *words);
+	// packets is a sequence of [num_words, words...], handed to the ring in one go.
+	void enqueue_commands(const uint32_t *packets, size_t total_words);
 	void enqueue_command_direct(unsigned num_words, const uint32_t *words);
 
 	void set_quirks(const Quirks &quirks);

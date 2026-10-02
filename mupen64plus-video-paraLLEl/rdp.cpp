@@ -46,6 +46,17 @@ static const unsigned cmd_len_lut[64] = {
 	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,  1,  1,  1,  1,  1,
 };
 
+// Commands of one DP buffer as [num_words, words...], handed to the command ring
+// with one lock instead of one lock per command.
+static std::vector<uint32_t> batch;
+
+static void flush_batch()
+{
+	if (!batch.empty() && frontend)
+		frontend->enqueue_commands(batch.data(), batch.size());
+	batch.clear();
+}
+
 void process_commands()
 {
 	const uint32_t DP_CURRENT = *GET_GFX_INFO(DPC_CURRENT_REG) & 0x00FFFFF8;
@@ -101,18 +112,23 @@ void process_commands()
 
 		if (cmd_ptr - cmd_cur - cmd_length < 0)
 		{
+			flush_batch();
 			*GET_GFX_INFO(DPC_START_REG) = *GET_GFX_INFO(DPC_CURRENT_REG) = *GET_GFX_INFO(DPC_END_REG);
 			return;
 		}
 
 		if (command >= 8 && frontend)
-			frontend->enqueue_command(cmd_length * 2, &cmd_data[2 * cmd_cur]);
+		{
+			batch.push_back(cmd_length * 2);
+			batch.insert(batch.end(), &cmd_data[2 * cmd_cur], &cmd_data[2 * cmd_cur] + cmd_length * 2);
+		}
 
 		if (RDP::Op(command) == RDP::Op::SyncFull)
 		{
 			// For synchronous RDP:
 			if (synchronous && frontend)
 			{
+				flush_batch();
 				// Instrumented: these waits run on the emulation thread, so every ms
 				// spent here is emulation time lost. Logs individual slow waits and a
 				// cumulative total every ~600 SyncFulls so the log shows how much frame
@@ -140,6 +156,7 @@ void process_commands()
 		cmd_cur += cmd_length;
 	}
 
+	flush_batch();
 	cmd_ptr = 0;
 	cmd_cur = 0;
 	*GET_GFX_INFO(DPC_START_REG) = *GET_GFX_INFO(DPC_CURRENT_REG) = *GET_GFX_INFO(DPC_END_REG);
