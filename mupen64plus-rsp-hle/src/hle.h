@@ -22,6 +22,8 @@
 #ifndef HLE_H
 #define HLE_H
 
+#include <stdbool.h>
+
 #include "hle_internal.h"
 
 void hle_init(struct hle_t* hle,
@@ -49,6 +51,8 @@ void hle_init(struct hle_t* hle,
     void* user_defined);
 
 void hle_execute(struct hle_t* hle);
+/* Runs an audio OSTask with HLE; false (nothing done) when it is not a known audio task. */
+bool hle_execute_audio(struct hle_t* hle);
 
 #endif
 

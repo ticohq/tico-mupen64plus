@@ -48,6 +48,7 @@ static ucode_func_t try_audio_task_detection(struct hle_t* hle);
 static ucode_func_t try_normal_task_detection(struct hle_t* hle);
 static ucode_func_t non_task_detection(struct hle_t* hle);
 static ucode_func_t task_detection(struct hle_t* hle);
+static void unknown_task(struct hle_t* hle);
 
 #ifdef ENABLE_TASK_DUMP
 static void dump_binary(struct hle_t* hle, const char *const filename,
@@ -106,7 +107,7 @@ void hle_init(struct hle_t* hle,
     hle->user_defined = user_defined;
 }
 
-void hle_execute(struct hle_t* hle)
+static struct ucode_info_t *hle_lookup_ucode(struct hle_t* hle)
 {
     uint32_t uc_start = *dmem_u32(hle, TASK_UCODE);
     uint32_t uc_dstart = *dmem_u32(hle, TASK_UCODE_DATA);
@@ -139,7 +140,26 @@ void hle_execute(struct hle_t* hle)
         assert(info->uc_pfunc != NULL);
     }
 
+    return info;
+}
+
+void hle_execute(struct hle_t* hle)
+{
+    hle_lookup_ucode(hle)->uc_pfunc(hle);
+}
+
+bool hle_execute_audio(struct hle_t* hle)
+{
+    if (!is_task(hle) || *dmem_u32(hle, TASK_TYPE) != 2)
+        return false;
+
+    struct ucode_info_t *info = hle_lookup_ucode(hle);
+    /* not a known audio ucode: let the LLE RSP run it */
+    if (info->uc_pfunc == &unknown_task)
+        return false;
+
     info->uc_pfunc(hle);
+    return true;
 }
 
 /* local functions */

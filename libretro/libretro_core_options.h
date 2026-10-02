@@ -1412,6 +1412,22 @@ struct retro_core_option_v2_definition option_defs_us[] = {
         },
         "hle"
     },
+#ifdef HAVE_PARALLEL_RSP
+    {
+        CORE_NAME "-parallel-rsp-hle-audio",
+        "(ParaLLEl-RSP) HLE Audio",
+        NULL,
+        "Run audio microcode with the HLE RSP while graphics stays on ParaLLEl-RSP. Much faster; disable if a game's audio sounds wrong.",
+        NULL,
+        NULL,
+        {
+            {"True", "Enabled"},
+            {"False", "Disabled"},
+            { NULL, NULL },
+        },
+        "True"
+    },
+#endif
     {
         CORE_NAME "-FrameDuping",
         "Frame Duplication",

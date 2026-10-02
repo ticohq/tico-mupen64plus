@@ -1057,6 +1057,18 @@ static void update_variables(bool startup)
 #endif 
           }
        }
+#ifdef HAVE_PARALLEL_RSP
+       {
+          extern bool parallel_rsp_hle_audio;
+          var.key = CORE_NAME "-parallel-rsp-hle-audio";
+          var.value = NULL;
+          parallel_rsp_hle_audio = !(environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value &&
+                                     !strcmp(var.value, "False"));
+          if (log_cb)
+             log_cb(RETRO_LOG_INFO, CORE_NAME ": ParaLLEl-RSP HLE audio %s\n",
+                    parallel_rsp_hle_audio ? "enabled" : "disabled");
+       }
+#endif
        
 #ifdef IOS
        bool can_jit = false;

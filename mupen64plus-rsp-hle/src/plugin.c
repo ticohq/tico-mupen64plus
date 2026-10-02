@@ -183,6 +183,12 @@ EXPORT unsigned int CALL hleDoRspCycles(unsigned int Cycles)
     return Cycles;
 }
 
+/* Used by the paraLLEl RSP to hand audio tasks to HLE; 0 when HLE does not know the task. */
+EXPORT int CALL hleDoAudioTask(void)
+{
+    return hle_execute_audio(&g_hle) ? 1 : 0;
+}
+
 EXPORT void CALL hleInitiateRSP(RSP_INFO Rsp_Info, unsigned int* CycleCount)
 {
     hle_init(&g_hle,

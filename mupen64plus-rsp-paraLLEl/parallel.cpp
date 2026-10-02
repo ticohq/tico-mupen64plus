@@ -1,3 +1,4 @@
+#include <chrono>
 #ifdef DEBUG_JIT
 #include "debug_rsp.hpp"
 #else
@@ -50,7 +51,54 @@ extern "C"
 	}
 #endif
 
+	static unsigned int do_rsp_cycles(unsigned int cycles);
+
+	// HLE audio: audio OSTasks go to the HLE RSP (mupen64plus-rsp-hle, linked into
+	// the core) while graphics stays on this LLE RSP. Unknown audio ucodes still
+	// run here. Set from the core option before the RSP is initiated.
+	bool parallel_rsp_hle_audio = true;
+	void hleInitiateRSP(RSP_INFO Rsp_Info, unsigned int *CycleCount);
+	void hleRomClosed(void);
+	int hleDoAudioTask(void);
+
+#ifdef TICO_STANDALONE
+	// RSP time per OSTask type (0 graphics, 1 audio, 2 other), read by the frontend
+	// on the emu thread to see what the RSP spends its time on.
+	uint64_t tico_rsp_task_ns[3];
+#endif
+
 	EXPORT unsigned int CALL parallelRSPDoRspCycles(unsigned int cycles)
+	{
+		if (parallel_rsp_hle_audio && !(*RSP::rsp.SP_STATUS_REG & SP_STATUS_HALT) &&
+		    *reinterpret_cast<const uint32_t *>(RSP::rsp.DMEM + 0xfc0) == 2)
+		{
+#ifdef TICO_STANDALONE
+			const auto hle_start = std::chrono::steady_clock::now();
+#endif
+			const bool handled = hleDoAudioTask() != 0;
+#ifdef TICO_STANDALONE
+			if (handled)
+				tico_rsp_task_ns[1] += std::chrono::duration_cast<std::chrono::nanoseconds>(
+				                           std::chrono::steady_clock::now() - hle_start).count();
+#endif
+			if (handled)
+				return cycles;
+		}
+
+#ifdef TICO_STANDALONE
+		const uint32_t task_type = *reinterpret_cast<const uint32_t *>(RSP::rsp.DMEM + 0xfc0);
+		const auto start = std::chrono::steady_clock::now();
+		unsigned int ret = do_rsp_cycles(cycles);
+		const uint64_t ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+		                        std::chrono::steady_clock::now() - start).count();
+		tico_rsp_task_ns[task_type == 1 ? 0 : task_type == 2 ? 1 : 2] += ns;
+		return ret;
+#else
+		return do_rsp_cycles(cycles);
+#endif
+	}
+
+	static unsigned int do_rsp_cycles(unsigned int cycles)
 	{
 		if (*RSP::rsp.SP_STATUS_REG & SP_STATUS_HALT)
 			return 0;
@@ -119,6 +167,7 @@ extern "C"
 	EXPORT void CALL parallelRSPRomClosed(void)
 	{
 		*RSP::rsp.SP_PC_REG = 0x00000000;
+		hleRomClosed();
 	}
 
 	EXPORT void CALL parallelRSPInitiateRSP(RSP_INFO Rsp_Info, unsigned int *CycleCount)
@@ -131,6 +180,7 @@ extern "C"
 
 		RSP::rsp = Rsp_Info;
 		*RSP::rsp.SP_PC_REG = 0x04001000 & 0x00000FFF; /* task init bug on Mupen64 */
+		hleInitiateRSP(Rsp_Info, nullptr);
 
 		auto **cr = RSP::cpu.get_state().cp0.cr;
 		cr[0x0] = RSP::rsp.SP_MEM_ADDR_REG;
