@@ -4,7 +4,10 @@
 # is one, otherwise the switch-dev Docker image.
 #
 #   MESA_SDK_DIR        a Horizon Mesa SDK (lib/ and include/) to link instead of
-#                       portlibs; needed for Zink, which portlibs' Mesa lacks
+#                       portlibs; needed for Zink, which portlibs' Mesa lacks.
+#                       mesa-switch's unified configuration (NVK, plus EGL with
+#                       nouveau and zink) installs one under
+#                       mesa-unified-install*/opt/devkitpro/portlibs/switch
 #   TICO_ENABLE_LOGGING 0 to build without sdmc:/tico/debug/mupen64plus.txt
 #   BUILD_JOBS          parallel jobs (default: all cores)
 
@@ -76,7 +79,8 @@ GLSLANG_LIBS=(
 echo "--- Step 3: NVK ---"
 NVK_SRC="$MESA_SDK/lib/libvulkan.a"
 [ -f "$NVK_SRC" ] || { echo "Error: no NVK libvulkan.a in $MESA_SDK/lib"; exit 1; }
-NVK_CACHE="$ROOT_DIR/build_nvk"
+# one localized copy per SDK, so switching SDKs never reuses another's
+NVK_CACHE="$ROOT_DIR/build_nvk/$(echo "$NVK_SRC" | md5sum | cut -c1-8)"
 mkdir -p "$NVK_CACHE"
 NVK_ARCHIVE="$NVK_CACHE/libvulkan_nvk.a"
 if [ ! -f "$NVK_ARCHIVE" ] || [ "$NVK_SRC" -nt "$NVK_ARCHIVE" ]; then
