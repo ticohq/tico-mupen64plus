@@ -123,6 +123,9 @@ PARALLEL_RDP="$ROOT_DIR/mupen64plus-video-paraLLEl/parallel-rdp"
 
 COMMON_FLAGS="-march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE -O2 -g -fno-omit-frame-pointer"
 COMMON_FLAGS="$COMMON_FLAGS -ffunction-sections -fdata-sections -D__SWITCH__ -DHAVE_LIBNX"
+# __FILE__ (asserts, library messages) and debug info name sources relative to
+# the checkout, not the build machine's paths
+COMMON_FLAGS="$COMMON_FLAGS -ffile-prefix-map=$ROOT_DIR/="
 COMMON_FLAGS="$COMMON_FLAGS -DLIBARCHIVE_STATIC -DVK_USE_PLATFORM_VI_NN -DVK_NO_PROTOTYPES -DTICO_APP_VERSION=\"$APP_VERSION\""
 [ $VULKAN -eq 1 ] && COMMON_FLAGS="$COMMON_FLAGS -DTICO_HAVE_VULKAN"
 COMMON_FLAGS="$COMMON_FLAGS -DIMGUI_IMPL_VULKAN_NO_PROTOTYPES -DIMGUI_DISABLE_DEFAULT_SHELL_FUNCTIONS -DTICO_STB_IMAGE_WRITE_EXTERNAL"
