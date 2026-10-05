@@ -757,7 +757,9 @@ bool TicoCore::ReadRomFromArchive(const std::string &path, std::vector<uint8_t> 
         archive_read_free(ar);
         return false;
     }
-    constexpr size_t kMaxRom = 64u * 1024u * 1024u;
+    // what the core maps of cart ROM (device.c): romhacks such as B3313 go
+    // past the 64 MB of retail cartridges
+    constexpr size_t kMaxRom = 0x0fc00000;
     bool found = false;
     struct archive_entry *entry = nullptr;
     while (!found && archive_read_next_header(ar, &entry) == ARCHIVE_OK)
