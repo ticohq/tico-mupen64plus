@@ -4,11 +4,14 @@
 #
 #   make            Release
 #   make DEBUG=1    -O0 with debug info
+#   make VULKAN=0   without paraLLEl-RDP, for a Mesa with no Vulkan driver:
+#                   GLideN64 is then the only renderer
 #   make clean
 
 ROOT_DIR := .
 TARGET   := libmupen64plus_tico.a
 DEBUG    ?= 0
+VULKAN   ?= 1
 
 include $(DEVKITPRO)/devkitA64/base_tools
 PORTLIBS := $(DEVKITPRO)/portlibs/switch
@@ -297,8 +300,11 @@ GLIDEN64_SOURCES_CXX += \
 GLIDEN64_SOURCES_CXX += $(VIDEODIR_GLIDEN64)/src/CRC32_ARMV8.cpp $(VIDEODIR_GLIDEN64)/src/3DMath.cpp
 GLIDEN64_SOURCES_C := $(VIDEODIR_GLIDEN64)/src/osal/osal_files_unix.c
 
+ifeq ($(VULKAN), 1)
 PARALLEL_RDP_IMPLEMENTATION := $(VIDEODIR_PARALLEL)/parallel-rdp
 include $(PARALLEL_RDP_IMPLEMENTATION)/config.mk
+PARALLEL_RDP_SOURCES_CXX += $(VIDEODIR_PARALLEL)/parallel.cpp $(VIDEODIR_PARALLEL)/rdp.cpp
+endif
 
 PARALLEL_RSP_SOURCES_CXX := \
 	$(RSPDIR_PARALLEL)/parallel.cpp \
@@ -322,8 +328,7 @@ DYNAREC_SOURCES_ASM := $(CORE_DIR)/src/device/r4300/new_dynarec/arm64/linkage_ar
 SOURCES_C := $(CORE_SOURCES_C) $(TICO_M64P_SOURCES_C) $(CORE_DIR)/subprojects/md5/md5.c \
 	$(MINIZIP_SOURCES_C) $(LIBPNG_SOURCES_C) $(ZLIB_SOURCES_C) $(RSP_HLE_SOURCES_C) \
 	$(GLIDEN64_SOURCES_C) $(PARALLEL_RDP_SOURCES_C) $(PARALLEL_RSP_SOURCES_C) $(DYNAREC_SOURCES_C)
-SOURCES_CXX := $(GLIDEN64_SOURCES_CXX) $(PARALLEL_RDP_SOURCES_CXX) \
-	$(VIDEODIR_PARALLEL)/parallel.cpp $(VIDEODIR_PARALLEL)/rdp.cpp $(PARALLEL_RSP_SOURCES_CXX)
+SOURCES_CXX := $(GLIDEN64_SOURCES_CXX) $(PARALLEL_RDP_SOURCES_CXX) $(PARALLEL_RSP_SOURCES_CXX)
 SOURCES_ASM := $(DYNAREC_SOURCES_ASM)
 
 OBJECTS := $(SOURCES_CXX:.cpp=.o) $(SOURCES_C:.c=.o) $(SOURCES_ASM:.S=.o)
@@ -352,8 +357,11 @@ DEFINES := -D__SWITCH__=1 -DSWITCH -DHAVE_LIBNX -DOS_LINUX -DEGL -DVK_USE_PLATFO
 	-DTICO_M64P -DM64P_PLUGIN_API -DM64P_CORE_PROTOTYPES -DMUPENPLUSAPI \
 	-D__STDC_CONSTANT_MACROS -D__STDC_LIMIT_MACROS -DUSE_FILE32API -D_ENDUSER_RELEASE \
 	-DTXFILTER_LIB -D__VEC4_OPT -D_GLIBCXX_USE_C99_MATH_TR1 -D_LDBL_EQ_DBL -DCORE \
-	-DHAVE_OPENGL -DHAVE_PARALLEL_RDP -DHAVE_PARALLEL_RSP -DPARALLEL_INTEGRATION \
+	-DHAVE_OPENGL -DHAVE_PARALLEL_RSP -DPARALLEL_INTEGRATION \
 	-DNEW_DYNAREC=4 -DDYNAREC -I$(AWK_DEST_DIR)/
+ifeq ($(VULKAN), 1)
+DEFINES += -DHAVE_PARALLEL_RDP
+endif
 
 ARCH := -march=armv8-a+crc -mtune=cortex-a57 -mtp=soft -mcpu=cortex-a57+crc+fp+simd -fPIE \
 	-specs=$(LIBNX)/switch.specs
@@ -399,7 +407,8 @@ $(RSPDIR_PARALLEL)/lightning/lib/lightning.o: $(RSPDIR_PARALLEL)/lightning/lib/l
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 clean:
-	find $(ROOT_DIR) -path $(ROOT_DIR)/tico -prune -o \( -name "*.o" -o -name "*.d" \) -type f -print -delete >/dev/null
+	find $(ROOT_DIR) \( -path $(ROOT_DIR)/.git -o -path $(ROOT_DIR)/tico/deps -o -path $(ROOT_DIR)/build_glslang_nx \) -prune \
+		-o \( -name "*.o" -o -name "*.d" \) -type f -exec rm -f {} +
 	rm -f $(TARGET) $(AWK_DEST_DIR)/asm_defines_gas.h $(AWK_DEST_DIR)/asm_defines_nasm.h
 
 .PHONY: all clean

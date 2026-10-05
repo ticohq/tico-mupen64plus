@@ -444,6 +444,7 @@ TicoCore::~TicoCore()
 
     UnloadGame();
 
+    tico_debug_log("~TicoCore: stopping the RetroAchievements worker");
     StopRAWorker();
 
     if (m_trophySound) {
@@ -1125,6 +1126,7 @@ bool TicoCore::SaveState(const std::string &path)
         return false;
     }
 
+    tico_debug_log("SaveState: the core took the state, writing %s", path.c_str());
     // the slot's previous state stays in backups/ (one level)
     const bool written = TicoSafeFile::Write(path, data.data(), data.size(), kStateBackups);
     if (!written)

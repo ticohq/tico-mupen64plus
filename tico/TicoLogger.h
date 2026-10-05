@@ -98,6 +98,9 @@ public:
     ResetLogFile();
     mkdir("sdmc:/tico", 0777);
     mkdir("sdmc:/tico/debug", 0777);
+    // the previous run's log survives one launch (e.g. a Restart)
+    remove("sdmc:/tico/debug/mupen64plus.prev.txt");
+    rename(kSwitchLogPath, "sdmc:/tico/debug/mupen64plus.prev.txt");
     m_file = fopen(kSwitchLogPath, "w");
     if (m_file) {
       fprintf(m_file, "=== Tico mupen64plus log start ===\n");

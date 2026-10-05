@@ -29,6 +29,11 @@ static constexpr bool huge_va = std::numeric_limits<size_t>::max() > 0x100000000
 static constexpr size_t block_size = huge_va ? (1024 * 1024 * 1024) : (2 * 1024 * 1024);
 Allocator::~Allocator()
 {
+	release();
+}
+
+void Allocator::release()
+{
 #ifdef _WIN32
 	for (auto &block : blocks)
 		VirtualFree(block.code, 0, MEM_RELEASE);
@@ -42,6 +47,7 @@ Allocator::~Allocator()
 	for (auto &block : blocks)
 		munmap(block.code, block.size);
 #endif
+	blocks.clear();
 }
 
 static size_t align_page(size_t offset)

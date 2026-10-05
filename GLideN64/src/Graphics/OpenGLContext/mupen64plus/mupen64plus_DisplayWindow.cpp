@@ -201,9 +201,9 @@ void DisplayWindowMupen64plus::_readScreen2(void * _dest, int * _width, int * _h
 #endif
 }
 
-// The frontend's framebuffer on the emulation thread's context; each swap
-// hands its contents to the frontend (tico_m64p_present_gl()).
+// The frontend's framebuffer, which binding 0 stands for; each swap hands its
+// contents to the frontend (tico_m64p_present_gl()).
 graphics::ObjectHandle DisplayWindowMupen64plus::_getDefaultFramebuffer()
 {
-	return graphics::ObjectHandle(tico_m64p_gl_default_framebuffer());
+	return graphics::ObjectHandle::null; // bound as the frontend's (opengl_Wrapper.cpp)
 }

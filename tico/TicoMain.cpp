@@ -14,9 +14,11 @@
 #include "TicoGL.h"
 #include "TicoLogger.h"
 #include "TicoRenderer.h"
-#include "TicoShaderChain.h"
 #include "TicoUtils.h"
+#ifdef TICO_HAVE_VULKAN
+#include "TicoShaderChain.h"
 #include "TicoVulkan.h"
+#endif
 #include "UsbStorage.h"
 #include "m64p/tico_m64p.h"
 #include "overlay/imgui_overlay.h"
@@ -50,6 +52,9 @@
 #include <vector>
 
 #include "deps/stb/stb_image.h"
+// stb_image_write is built here, for the state pictures; TicoShaderChain uses
+// it too (TICO_STB_IMAGE_WRITE_EXTERNAL), but only in Vulkan builds.
+#define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "deps/stb/stb_image_write.h"
 #include "imgui.h"
 
@@ -75,7 +80,13 @@ namespace OverlayConfig = SwitchFrontend::TicoConfig;
 using SwitchFrontend::OverlayTranslation::tr;
 
 static std::unique_ptr<TicoCore> g_core;
+#ifdef TICO_HAVE_VULKAN
 static std::unique_ptr<TicoShaderChain> g_chain; // Vulkan only
+using GameCommandBuffer = VkCommandBuffer;
+#else
+// Built for a Mesa without Vulkan: OpenGL is the only renderer.
+using GameCommandBuffer = void *;
+#endif
 static std::string g_activePreset = "\x01";     // forces the first load
 
 // This NRO's path and the launch it was started with, for Restart and the
@@ -213,13 +224,17 @@ static bool g_refreshShownFrame = false;
 template <typename Fn>
 static auto WithEmulatorRunning(Fn fn) -> decltype(fn())
 {
+    // the emulator may need GL to get there, and the menu holds it
+    const int glDepth = TicoGL::Suspend();
     SetDrain(true);
     auto result = fn();
     SetDrain(false);
+    TicoGL::Resume(glDepth);
     g_refreshShownFrame = true;
     return result;
 }
 
+#ifdef TICO_HAVE_VULKAN
 // Emulation thread: paraLLEl-RDP scanned out a frame into its current slot.
 static void PresentVulkanFromCore(unsigned width, unsigned height)
 {
@@ -228,12 +243,16 @@ static void PresentVulkanFromCore(unsigned width, unsigned height)
         g_core->SetFrameSize((int)width, (int)height);
     PostFrame(slot, width, height);
 }
+#endif
 
 // Emulation thread: GLideN64 swapped; copy its frame out for the main thread.
 static void PresentGLFromCore(unsigned width, unsigned height)
 {
     const uint32_t slot = TicoGL::PostCoreFrame(width, height);
+    // the main thread draws it, and may wait here for its turn at GL
+    TicoGL::Unlock();
     PostFrame(slot, width, height);
+    TicoGL::Lock();
 }
 
 //==============================================================================
@@ -278,9 +297,11 @@ static bool UpdateScreenMode()
     const u32 w = handheld ? 1280 : 1920, h = handheld ? 720 : 1080;
     nwindowSetDimensions(nwindowGetDefault(), w, h);
     nwindowSetCrop(nwindowGetDefault(), 0, 0, w, h);
+#ifdef TICO_HAVE_VULKAN
     if (TicoRenderer::IsVulkan())
         TicoVulkan::Resize(w, h);
     else
+#endif
         TicoGL::Resize(w, h);
     LOG_INFO("DISPLAY", "Mode -> %s (%ux%u)", handheld ? "Handheld" : "Docked", w, h);
     if (ImGui::GetCurrentContext())
@@ -439,9 +460,13 @@ static bool InitRenderer(bool forGame)
     switch (TicoRenderer::Current())
     {
     case TicoRenderer::Backend::Vulkan:
+#ifdef TICO_HAVE_VULKAN
         if (forGame)
             return true;
         return TicoVulkan::Init((uint32_t)w, (uint32_t)h, false);
+#else
+        return false;
+#endif
     case TicoRenderer::Backend::OpenGL:
         return TicoGL::Init((uint32_t)w, (uint32_t)h, false);
     case TicoRenderer::Backend::Zink:
@@ -450,6 +475,7 @@ static bool InitRenderer(bool forGame)
     return false;
 }
 
+#ifdef TICO_HAVE_VULKAN
 static bool CreateVulkanDeviceForCore()
 {
     int w, h;
@@ -466,8 +492,11 @@ static bool CreateVulkanDeviceForCore()
     return true;
 }
 
+#endif
+
 static void ShutdownRenderer()
 {
+#ifdef TICO_HAVE_VULKAN
     if (TicoRenderer::IsVulkan())
     {
         TicoVulkan::WaitIdle();
@@ -476,6 +505,7 @@ static void ShutdownRenderer()
         TicoVulkan::Shutdown();
     }
     else
+#endif
     {
         TicoGL::Shutdown();
     }
@@ -569,8 +599,10 @@ static bool ReadShownFrame(std::vector<uint8_t> &rgba, uint32_t &width, uint32_t
 {
     if (!g_haveShownFrame)
         return false;
+#ifdef TICO_HAVE_VULKAN
     if (TicoRenderer::IsVulkan())
         return g_chain && g_chain->ReadOutputRGBA(rgba, width, height);
+#endif
     return TicoGL::ReadFrameRGBA(g_shownFrame.slot, rgba, width, height);
 }
 
@@ -617,9 +649,12 @@ static bool SaveStateNow(int slot)
     if (!g_core)
         return false;
     const std::string path = StatePath(slot);
+    LOG_INFO("HOME", "state: saving slot %d", slot);
     const bool saved = WithEmulatorRunning([&] { return g_core->SaveState(path); });
+    LOG_INFO("HOME", "state: slot %d %s, taking its picture", slot, saved ? "saved" : "not saved");
     if (saved)
         SaveStatePicture(path + ".png");
+    LOG_INFO("HOME", "state: slot %d done", slot);
     return saved;
 }
 
@@ -672,6 +707,8 @@ static void OfferResume()
 //==============================================================================
 // Shaders (Vulkan)
 //==============================================================================
+
+#ifdef TICO_HAVE_VULKAN
 
 static const char *kBuiltinShaderDir = "romfs:/shaders/";
 static const char *kUserShaderDir = "sdmc:/tico/shaders/";
@@ -896,6 +933,8 @@ static void ApplyShaderPreset()
         g_activePreset.clear();
     SetShaderPreset(g_activePreset);
 }
+
+#endif // TICO_HAVE_VULKAN
 
 //==============================================================================
 // Quick menu
@@ -1570,12 +1609,14 @@ static bool StartGame(const std::string &slug, const std::string &romArg, const 
     g_core->SetAudioCallbacks(AudioRateCallback, AudioSampleBatchCallback, AudioFlushCallback);
 
     TicoCoreHooks hooks;
+#ifdef TICO_HAVE_VULKAN
     if (TicoRenderer::IsVulkan())
     {
         hooks.createVulkanDevice = CreateVulkanDeviceForCore;
         hooks.presentVulkan = PresentVulkanFromCore;
     }
     else
+#endif
     {
         hooks.emuThreadBegin = [] { TicoGL::BeginCoreThread(); };
         hooks.emuThreadEnd = [] { TicoGL::EndCoreThread(); };
@@ -1666,7 +1707,7 @@ static ImVec4 ComputeGameRect(ImVec2 displaySize)
 }
 
 // The frame through the shader chain (Vulkan) or as GLideN64 drew it (GL).
-static void DrawGame(VkCommandBuffer cmd, ImDrawList *dl, ImVec2 displaySize, const PostedFrame *frame)
+static void DrawGame(GameCommandBuffer cmd, ImDrawList *dl, ImVec2 displaySize, const PostedFrame *frame)
 {
     dl->AddRectFilled(ImVec2(0, 0), displaySize, IM_COL32(0, 0, 0, 255));
     if (!g_core || !frame)
@@ -1676,6 +1717,7 @@ static void DrawGame(VkCommandBuffer cmd, ImDrawList *dl, ImVec2 displaySize, co
         return;
     const ImVec2 p0(rect.x, rect.y), p1(rect.x + rect.z, rect.y + rect.w);
 
+#ifdef TICO_HAVE_VULKAN
     if (TicoRenderer::IsVulkan())
     {
         if (!g_chain || !cmd)
@@ -1686,6 +1728,9 @@ static void DrawGame(VkCommandBuffer cmd, ImDrawList *dl, ImVec2 displaySize, co
             dl->AddImage(tex, p0, p1);
         return;
     }
+#else
+    (void)cmd;
+#endif
     uint32_t w = 0, h = 0;
     const ImTextureID tex = TicoGL::CoreFrameTexture(frame->slot, w, h);
     if (tex != ImTextureID_Invalid)
@@ -1721,7 +1766,8 @@ static void Present(const PostedFrame *frame, bool newFrame)
     io.DeltaTime = 1.0f / 60.0f;
     const ImVec2 displaySize((float)logW, (float)logH);
 
-    VkCommandBuffer cmd = VK_NULL_HANDLE;
+    GameCommandBuffer cmd = nullptr;
+#ifdef TICO_HAVE_VULKAN
     if (TicoRenderer::IsVulkan())
     {
         // A skipped frame (swapchain being recreated) still lets the
@@ -1734,6 +1780,7 @@ static void Present(const PostedFrame *frame, bool newFrame)
         ApplyShaderPreset();
     }
     else
+#endif
     {
         TicoGL::BeginFrame();
     }
@@ -1745,12 +1792,14 @@ static void Present(const PostedFrame *frame, bool newFrame)
     DrawOSD();
     ImGui::Render();
 
+#ifdef TICO_HAVE_VULKAN
     if (TicoRenderer::IsVulkan())
     {
         if (cmd)
             TicoVulkan::EndFrame(ImGui::GetDrawData());
     }
     else
+#endif
     {
         TicoGL::EndFrame(ImGui::GetDrawData(), frame ? (int)frame->slot : -1);
     }
@@ -1993,6 +2042,80 @@ void StopProfiler()
 // Main
 //==============================================================================
 
+// What the process still has mapped beside its heap and code when it leaves:
+// hbloader reuses this process for the next NRO and cannot load it over
+// memory something still holds (a GPU mapping, a JIT, transfer memory).
+static void LogMemoryMap()
+{
+    static const char *const kTypes[] = {
+        "Unmapped", "Io", "Normal", "CodeStatic", "CodeMutable", "Heap", "SharedMem", "WeirdMapped",
+        "ModuleCodeStatic", "ModuleCodeMutable", "IpcBuffer0", "MappedMemory", "ThreadLocal",
+        "TransferMemIsolated", "TransferMem", "ProcessMem", "Reserved", "IpcBuffer1", "IpcBuffer3",
+        "KernelStack", "CodeReadOnly", "CodeWritable", "Coverage", "Insecure"};
+    u64 addr = 0;
+    for (int i = 0; i < 4096; i++)
+    {
+        MemoryInfo info = {};
+        u32 page = 0;
+        if (R_FAILED(svcQueryMemory(&info, &page, addr)))
+            break;
+        const u32 type = info.type & 0xFF;
+        if (type != MemType_Unmapped)
+            LOG_INFO("MEMORY", "%010llx +%010llx %-20s attr=%x perm=%x ipc=%u dev=%u", (unsigned long long)info.addr,
+                     (unsigned long long)info.size, type < sizeof(kTypes) / sizeof(kTypes[0]) ? kTypes[type] : "?",
+                     info.attr, info.perm, info.ipc_refcount, info.device_refcount);
+        const u64 next = info.addr + info.size;
+        if (next <= addr)
+            break;
+        addr = next;
+    }
+}
+
+// Leaves to whatever envSetNextLoad named (tico, or this NRO again), as
+// DrasticDS does: straight through libnx's exit, without the C++ static
+// destructors and atexit handlers, which would run the plugins' and Mesa's
+// teardown again after the frontend already did it.
+extern "C" void NX_NORETURN __libnx_exit(int rc);
+// paraLLEl-RSP's JIT CPU is a global whose constructor maps 2 MB of JIT code
+// memory, on every renderer; only its destructor would unmap it.
+extern "C" void parallel_rsp_release_jit(void);
+[[noreturn]] static void LeaveProcess()
+{
+    parallel_rsp_release_jit();
+    LogMemoryMap();
+    LOG_INFO("HOME", "Clean exit");
+    Logger::Instance().CloseLogFile();
+    __libnx_exit(0);
+}
+
+// Stops what main started besides the emulator, which is gone by now, and
+// leaves. Every way out goes through here: hbloader unmaps this NRO as soon
+// as the process leaves, and a thread still running then (SDL's audio thread,
+// the USB drives') faults in code that is no longer there.
+[[noreturn]] static void ShutdownAndLeave()
+{
+    LOG_INFO("HOME", "cleanup: audio");
+    g_audio.Shutdown();
+    Mix_CloseAudio();
+
+    CloseControllers();
+    LOG_INFO("HOME", "cleanup: renderer");
+    ShutdownRenderer();
+    if (ImGui::GetCurrentContext())
+        ImGui::DestroyContext();
+    LOG_INFO("HOME", "cleanup: SDL");
+    SDL_Quit();
+
+    LOG_INFO("HOME", "cleanup: USB drives");
+    UsbStorage::Shutdown(); // flush and unmount before tico takes over again
+    LOG_INFO("HOME", "cleanup: network");
+    curl_global_cleanup();
+    socketExit();
+    romfsExit();
+    appletUnlockExit();
+    LeaveProcess();
+}
+
 // tico launches with argv[1] = console slug, argv[2] = ROM path,
 // argv[3] = title. Restart and the library add --restart / --library.
 static void ParseLaunch(int argc, char *argv[], std::string &slug, std::string &rom, std::string &title,
@@ -2057,8 +2180,8 @@ int main(int argc, char *argv[])
 
     if (!InitSDL())
     {
-        Logger::Instance().CloseLogFile();
-        return 1;
+        ChainloadTico();
+        ShutdownAndLeave();
     }
     ApplySwitchPerformanceProfile();
     PinCurrentThreadToCore(2, "main/render");
@@ -2067,8 +2190,8 @@ int main(int argc, char *argv[])
     if (!InitImGui() || !InitRenderer(!g_standalone))
     {
         LOG_ERROR("HOME", "Failed to initialize the %s renderer", TicoRenderer::Name());
-        Logger::Instance().CloseLogFile();
-        return 1;
+        ChainloadTico();
+        ShutdownAndLeave();
     }
     g_lastOperationMode = 255;
 
@@ -2088,9 +2211,7 @@ int main(int argc, char *argv[])
         else
             ChainloadTico();
         g_core.reset();
-        ShutdownRenderer();
-        Logger::Instance().CloseLogFile();
-        exit(0);
+        ShutdownAndLeave();
     }
     if (restart)
         g_offerResume = false; // Restart means from the start
@@ -2148,8 +2269,10 @@ int main(int argc, char *argv[])
         struct stat st;
         return g_core && slot >= 1 && stat(StatePath(slot - 1).c_str(), &st) == 0;
     });
+#ifdef TICO_HAVE_VULKAN
     if (TicoRenderer::IsVulkan())
         RegisterShaderMenu();
+#endif
     OverlayUI::ReloadSettings();
 
     if (g_standalone)
@@ -2196,9 +2319,11 @@ int main(int argc, char *argv[])
         const bool uncapped = FastForwardUncapped();
         if (uncapped != lastUncapped)
         {
+#ifdef TICO_HAVE_VULKAN
             if (TicoRenderer::IsVulkan())
                 TicoVulkan::SetVsync(!uncapped);
             else
+#endif
                 TicoGL::SetVsync(!uncapped);
             lastUncapped = uncapped;
         }
@@ -2281,11 +2406,17 @@ int main(int argc, char *argv[])
     }
 
     LOG_INFO("HOME", "Starting cleanup...");
+    // schedule the next program while libnx's environment is still intact
+    if (g_exitToTico)
+        ChainloadTico();
     StopProfiler();
+    LOG_INFO("HOME", "cleanup: auto save");
     AutoSaveState();
     // let the emulator finish its frame and stop
+    LOG_INFO("HOME", "cleanup: stopping the emulator");
     ShutdownHandoff();
     g_core.reset();
+    LOG_INFO("HOME", "cleanup: emulator stopped");
 
     OverlayUI::SetSlotOccupiedCallback(nullptr);
     OverlayUI::SetCheatCallbacks(nullptr, nullptr);
@@ -2295,24 +2426,5 @@ int main(int argc, char *argv[])
     OverlayUI::SetLibraryCallbacks({});
     OverlayUI::SetLibraryFolderCallbacks({});
     ImGuiOverlay::Shutdown();
-
-    g_audio.Shutdown();
-    Mix_CloseAudio();
-
-    CloseControllers();
-    ShutdownRenderer();
-    ImGui::DestroyContext();
-    SDL_Quit();
-
-    if (g_exitToTico)
-        ChainloadTico();
-    UsbStorage::Shutdown(); // flush and unmount before tico takes over again
-    curl_global_cleanup();
-    socketExit();
-    romfsExit();
-    appletUnlockExit();
-
-    LOG_INFO("HOME", "Clean exit");
-    Logger::Instance().CloseLogFile();
-    exit(0);
+    ShutdownAndLeave();
 }

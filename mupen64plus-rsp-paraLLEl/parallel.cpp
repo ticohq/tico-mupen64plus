@@ -26,6 +26,14 @@ int SP_STATUS_TIMEOUT;
 
 extern "C"
 {
+	// tico: hbloader can't load the next NRO while JIT code memory is mapped.
+	void parallel_rsp_release_jit()
+	{
+#ifndef DEBUG_JIT
+		RSP::cpu.release_jit();
+#endif
+	}
+
 	// Hack entry point to use when loading savestates when we're tracing.
 	void rsp_clear_registers()
 	{

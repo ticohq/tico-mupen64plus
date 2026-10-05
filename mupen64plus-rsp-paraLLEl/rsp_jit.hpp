@@ -88,6 +88,13 @@ public:
 
 	~CPU();
 
+	// Unmaps the JIT code memory. The CPU can't run afterwards; this is for
+	// leaving the process, where the destructor never runs.
+	void release_jit()
+	{
+		allocator.release();
+	}
+
 	CPU(CPU &&) = delete;
 
 	void operator=(CPU &&) = delete;

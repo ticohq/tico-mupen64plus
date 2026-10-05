@@ -26,3 +26,4 @@ build_tico_standalone
 /profile.txt
 /stacks.txt
 /build_glslang_nx
+.tico_vulkan

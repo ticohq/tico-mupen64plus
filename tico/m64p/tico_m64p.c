@@ -658,6 +658,7 @@ static void *emu_thread(void *arg)
    s_emu_running = true;
    CoreDoCommand(M64CMD_EXECUTE, 0, NULL);
    s_emu_running = false;
+   tico_m64p_log(TICO_LOG_INFO, "emulation thread: M64CMD_EXECUTE returned\n");
 
    if (s_cb.emu_thread_end)
       s_cb.emu_thread_end();
@@ -686,15 +687,28 @@ void tico_m64p_stop(void)
 {
    if (s_emu_thread_started)
    {
+      tico_m64p_log(TICO_LOG_INFO, "stop: M64CMD_STOP\n");
       CoreDoCommand(M64CMD_STOP, 0, NULL);
+      tico_m64p_log(TICO_LOG_INFO, "stop: joining the emulation thread\n");
       pthread_join(s_emu_thread, NULL);
       s_emu_thread_started = false;
+      tico_m64p_log(TICO_LOG_INFO, "stop: emulation thread joined\n");
    }
    if (s_rom_open)
    {
       CoreDoCommand(M64CMD_ROM_CLOSE, 0, NULL);
       s_rom_open = false;
+      tico_m64p_log(TICO_LOG_INFO, "stop: ROM closed\n");
    }
+#ifdef HAVE_PARALLEL_RDP
+   /* paraLLEl's device objects go before the frontend destroys the VkDevice
+      they were made on, not at exit */
+   if (s_renderer == TICO_M64P_RENDERER_PARALLEL)
+   {
+      parallel_deinit();
+      tico_m64p_log(TICO_LOG_INFO, "stop: paraLLEl-RDP released\n");
+   }
+#endif
 }
 
 bool tico_m64p_running(void)

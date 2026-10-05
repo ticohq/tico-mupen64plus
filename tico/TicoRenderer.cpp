@@ -3,22 +3,34 @@
 
 #include "TicoRenderer.h"
 #include "TicoGL.h"
+#ifdef TICO_HAVE_VULKAN
 #include "TicoVulkan.h"
+#endif
 
 namespace TicoRenderer
 {
 namespace
 {
+#ifdef TICO_HAVE_VULKAN
 Backend s_backend = Backend::Vulkan;
+#else
+Backend s_backend = Backend::OpenGL;
+#endif
 }
 
 Backend FromSetting(const std::string &value)
 {
+#ifdef TICO_HAVE_VULKAN
     if (value == "gl")
         return Backend::OpenGL;
     if (value == "zink")
         return Backend::Zink;
     return Backend::Vulkan;
+#else
+    // Built for a Mesa without Vulkan (no NVK, so no Zink either).
+    (void)value;
+    return Backend::OpenGL;
+#endif
 }
 
 const char *SettingValue(Backend backend)
@@ -47,16 +59,23 @@ const char *Name()
 
 ImTextureID CreateTextureRGBA(const unsigned char *rgba, int width, int height)
 {
-    return IsVulkan() ? TicoVulkan::CreateTextureRGBA(rgba, width, height)
-                      : TicoGL::CreateTextureRGBA(rgba, width, height);
+#ifdef TICO_HAVE_VULKAN
+    if (IsVulkan())
+        return TicoVulkan::CreateTextureRGBA(rgba, width, height);
+#endif
+    return TicoGL::CreateTextureRGBA(rgba, width, height);
 }
 
 void DestroyTexture(ImTextureID texture)
 {
+#ifdef TICO_HAVE_VULKAN
     if (IsVulkan())
+    {
         TicoVulkan::DestroyTexture(texture);
-    else
-        TicoGL::DestroyTexture(texture);
+        return;
+    }
+#endif
+    TicoGL::DestroyTexture(texture);
 }
 
 } // namespace TicoRenderer

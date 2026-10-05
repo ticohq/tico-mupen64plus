@@ -12,6 +12,9 @@
 #include <EGL/eglext.h>
 #include <switch.h>
 
+#include <algorithm>
+#include <condition_variable>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <mutex>
@@ -26,26 +29,25 @@ namespace
 EGLDisplay s_display = EGL_NO_DISPLAY;
 EGLConfig s_config = nullptr;
 EGLSurface s_surface = EGL_NO_SURFACE;
-EGLContext s_mainContext = EGL_NO_CONTEXT;
-EGLContext s_coreContext = EGL_NO_CONTEXT;
-// for drivers without surfaceless contexts
+// The one context, current on whichever thread holds the context lock: on
+// the main thread with the window, on the emulation thread with no surface.
+EGLContext s_context = EGL_NO_CONTEXT;
+// the emulation thread's surface on drivers without surfaceless contexts
 EGLSurface s_corePbuffer = EGL_NO_SURFACE;
 bool s_imguiReady = false;
 
-// GLideN64's output, on the emulation thread's context
+// GLideN64's output
 GLuint s_coreFbo = 0;
 GLuint s_coreColor = 0;
 GLuint s_coreDepth = 0;
 uint32_t s_coreWidth = 0;
 uint32_t s_coreHeight = 0;
 
-// The frames handed to the main thread. The textures are shared; each
-// context has its own framebuffer objects, so only the emulation thread's
-// are kept here.
+// The frames handed to the main thread
 struct Slot
 {
     GLuint texture = 0;
-    GLuint fbo = 0; // emulation thread's context
+    GLuint fbo = 0; // the emulation thread copies into it through this
     uint32_t width = 0;
     uint32_t height = 0;
     GLsync written = nullptr; // the copy into it, from the emulation thread
@@ -55,12 +57,119 @@ Slot s_slots[kSlots];
 uint32_t s_nextSlot = 0;
 std::mutex s_slotMutex;
 
+// Taken in turn (a ticket lock): the emulation thread gives it up once a
+// frame and takes it straight back, and must not get it again before the
+// main thread waiting for that frame has had its turn.
+class TurnLock
+{
+public:
+    void Acquire()
+    {
+        std::unique_lock<std::mutex> lock(m_mutex);
+        const uint64_t ticket = m_next++;
+        m_turn.wait(lock, [&] { return m_serving == ticket; });
+    }
+    void Release()
+    {
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_serving++;
+        }
+        m_turn.notify_all();
+    }
+
+private:
+    std::mutex m_mutex;
+    std::condition_variable m_turn;
+    uint64_t m_next = 0;
+    uint64_t m_serving = 0;
+};
+
+TurnLock s_contextLock;
+thread_local int t_lockDepth = 0;
+thread_local bool t_coreThread = false;
+
+struct ContextGuard
+{
+    ContextGuard() { Lock(); }
+    ~ContextGuard() { Unlock(); }
+};
+
 void LogEglError(const char *what)
 {
     LOG_ERROR(GL_TAG, "%s failed: 0x%x", what, eglGetError());
 }
 
+// Make the context current on this thread, which holds the lock.
+void Attach()
+{
+    if (!t_coreThread)
+    {
+        if (!eglMakeCurrent(s_display, s_surface, s_surface, s_context))
+            LogEglError("eglMakeCurrent (main thread)");
+        return;
+    }
+    if (s_corePbuffer == EGL_NO_SURFACE &&
+        eglMakeCurrent(s_display, EGL_NO_SURFACE, EGL_NO_SURFACE, s_context))
+        return;
+    // no EGL_KHR_surfaceless_context: a 1x1 pbuffer it never draws to
+    if (s_corePbuffer == EGL_NO_SURFACE)
+    {
+        const EGLint pbufferAttribs[] = {EGL_WIDTH, 1, EGL_HEIGHT, 1, EGL_NONE};
+        s_corePbuffer = eglCreatePbufferSurface(s_display, s_config, pbufferAttribs);
+    }
+    if (s_corePbuffer == EGL_NO_SURFACE ||
+        !eglMakeCurrent(s_display, s_corePbuffer, s_corePbuffer, s_context))
+        LogEglError("eglMakeCurrent (emulation thread)");
+}
+
+// Release it, so the other thread can make it current.
+void Detach()
+{
+    eglMakeCurrent(s_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+}
+
 } // namespace
+
+void Lock()
+{
+    if (t_lockDepth++ == 0)
+    {
+        s_contextLock.Acquire();
+        Attach();
+    }
+}
+
+void Unlock()
+{
+    if (--t_lockDepth == 0)
+    {
+        Detach();
+        s_contextLock.Release();
+    }
+}
+
+int Suspend()
+{
+    const int depth = t_lockDepth;
+    if (depth > 0)
+    {
+        t_lockDepth = 0;
+        Detach();
+        s_contextLock.Release();
+    }
+    return depth;
+}
+
+void Resume(int depth)
+{
+    if (depth > 0)
+    {
+        s_contextLock.Acquire();
+        Attach();
+        t_lockDepth = depth;
+    }
+}
 
 bool Init(uint32_t width, uint32_t height, bool zink)
 {
@@ -80,7 +189,10 @@ bool Init(uint32_t width, uint32_t height, bool zink)
     }
     eglBindAPI(EGL_OPENGL_API);
 
-    const EGLint configAttribs[] = {
+    // Pbuffers are only for the emulation thread on drivers without
+    // surfaceless contexts; Mesa 20.1's Horizon EGL has those, and offers
+    // window surfaces alone.
+    EGLint configAttribs[] = {
         EGL_SURFACE_TYPE, EGL_WINDOW_BIT | EGL_PBUFFER_BIT,
         EGL_RENDERABLE_TYPE, EGL_OPENGL_BIT,
         EGL_RED_SIZE, 8, EGL_GREEN_SIZE, 8, EGL_BLUE_SIZE, 8, EGL_ALPHA_SIZE, 8,
@@ -89,8 +201,12 @@ bool Init(uint32_t width, uint32_t height, bool zink)
     EGLint count = 0;
     if (!eglChooseConfig(s_display, configAttribs, &s_config, 1, &count) || count == 0)
     {
-        LogEglError("eglChooseConfig");
-        return false;
+        configAttribs[1] = EGL_WINDOW_BIT;
+        if (!eglChooseConfig(s_display, configAttribs, &s_config, 1, &count) || count == 0)
+        {
+            LogEglError("eglChooseConfig");
+            return false;
+        }
     }
 
     s_surface = eglCreateWindowSurface(s_display, s_config, (EGLNativeWindowType)nwindowGetDefault(), nullptr);
@@ -105,18 +221,15 @@ bool Init(uint32_t width, uint32_t height, bool zink)
         EGL_CONTEXT_MINOR_VERSION, 3,
         EGL_CONTEXT_OPENGL_PROFILE_MASK, EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT,
         EGL_NONE};
-    s_mainContext = eglCreateContext(s_display, s_config, EGL_NO_CONTEXT, contextAttribs);
-    s_coreContext = eglCreateContext(s_display, s_config, s_mainContext, contextAttribs);
-    if (s_mainContext == EGL_NO_CONTEXT || s_coreContext == EGL_NO_CONTEXT)
+    s_context = eglCreateContext(s_display, s_config, EGL_NO_CONTEXT, contextAttribs);
+    if (s_context == EGL_NO_CONTEXT)
     {
         LogEglError("eglCreateContext");
         return false;
     }
-    if (!eglMakeCurrent(s_display, s_surface, s_surface, s_mainContext))
-    {
-        LogEglError("eglMakeCurrent");
+    ContextGuard guard;
+    if (eglGetCurrentContext() != s_context)
         return false;
-    }
     if (!gladLoadGLLoader((GLADloadproc)eglGetProcAddress))
     {
         LOG_ERROR(GL_TAG, "gladLoadGLLoader failed");
@@ -150,9 +263,9 @@ void Shutdown()
 {
     if (s_display == EGL_NO_DISPLAY)
         return;
-    if (s_mainContext != EGL_NO_CONTEXT)
+    if (s_context != EGL_NO_CONTEXT)
     {
-        eglMakeCurrent(s_display, s_surface, s_surface, s_mainContext);
+        ContextGuard guard;
         glFinish();
         if (s_imguiReady)
             ImGui_ImplOpenGL3_Shutdown();
@@ -168,11 +281,8 @@ void Shutdown()
             slot = Slot();
         }
     }
-    eglMakeCurrent(s_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-    if (s_coreContext != EGL_NO_CONTEXT)
-        eglDestroyContext(s_display, s_coreContext);
-    if (s_mainContext != EGL_NO_CONTEXT)
-        eglDestroyContext(s_display, s_mainContext);
+    if (s_context != EGL_NO_CONTEXT)
+        eglDestroyContext(s_display, s_context);
     if (s_corePbuffer != EGL_NO_SURFACE)
         eglDestroySurface(s_display, s_corePbuffer);
     if (s_surface != EGL_NO_SURFACE)
@@ -180,7 +290,7 @@ void Shutdown()
     eglTerminate(s_display);
     eglReleaseThread();
     s_display = EGL_NO_DISPLAY;
-    s_coreContext = s_mainContext = EGL_NO_CONTEXT;
+    s_context = EGL_NO_CONTEXT;
     s_surface = s_corePbuffer = EGL_NO_SURFACE;
 }
 
@@ -195,16 +305,9 @@ void *GetProcAddress(const char *name)
 
 bool BeginCoreThread()
 {
-    if (eglMakeCurrent(s_display, EGL_NO_SURFACE, EGL_NO_SURFACE, s_coreContext))
-        return true;
-    // no EGL_KHR_surfaceless_context: a 1x1 pbuffer it never draws to
-    const EGLint pbufferAttribs[] = {EGL_WIDTH, 1, EGL_HEIGHT, 1, EGL_NONE};
-    s_corePbuffer = eglCreatePbufferSurface(s_display, s_config, pbufferAttribs);
-    if (s_corePbuffer != EGL_NO_SURFACE &&
-        eglMakeCurrent(s_display, s_corePbuffer, s_corePbuffer, s_coreContext))
-        return true;
-    LogEglError("eglMakeCurrent (emulation thread)");
-    return false;
+    t_coreThread = true;
+    Lock(); // held while emulating, until EndCoreThread
+    return eglGetCurrentContext() == s_context;
 }
 
 void EndCoreThread()
@@ -224,8 +327,9 @@ void EndCoreThread()
         glDeleteRenderbuffers(1, &s_coreDepth);
     s_coreFbo = s_coreColor = s_coreDepth = 0;
     s_coreWidth = s_coreHeight = 0;
-    eglMakeCurrent(s_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+    Unlock();
     eglReleaseThread();
+    t_coreThread = false;
 }
 
 unsigned CoreFramebuffer(uint32_t width, uint32_t height)
@@ -305,6 +409,7 @@ uint32_t PostCoreFrame(uint32_t width, uint32_t height)
     if (scissor)
         glDisable(GL_SCISSOR_TEST);
     glBlitFramebuffer(0, 0, width, height, 0, 0, width, height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+
     if (scissor)
         glEnable(GL_SCISSOR_TEST);
     glBindFramebuffer(GL_READ_FRAMEBUFFER, readFbo);
@@ -327,14 +432,39 @@ uint32_t PostCoreFrame(uint32_t width, uint32_t height)
 // Main thread
 //==============================================================================
 
+namespace
+{
+// What the frame changes besides ImGui (whose backend restores its own), put
+// back for GLideN64, which caches the GL state it sets.
+struct SavedState
+{
+    GLint drawFbo = 0, readFbo = 0;
+    GLint viewport[4] = {};
+    GLfloat clearColor[4] = {};
+    GLboolean colorMask[4] = {GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE};
+    GLboolean scissor = GL_FALSE;
+};
+SavedState s_saved;
+} // namespace
+
 void BeginFrame()
 {
+    Lock(); // until EndFrame
+    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &s_saved.drawFbo);
+    glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &s_saved.readFbo);
+    glGetIntegerv(GL_VIEWPORT, s_saved.viewport);
+    glGetFloatv(GL_COLOR_CLEAR_VALUE, s_saved.clearColor);
+    glGetBooleanv(GL_COLOR_WRITEMASK, s_saved.colorMask);
+    s_saved.scissor = glIsEnabled(GL_SCISSOR_TEST);
+
     if (s_imguiReady)
         ImGui_ImplOpenGL3_NewFrame();
     uint32_t width = 0, height = 0;
     GetSurfaceExtent(width, height);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glViewport(0, 0, (GLsizei)width, (GLsizei)height);
+    glDisable(GL_SCISSOR_TEST);
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
 }
@@ -374,10 +504,20 @@ void EndFrame(ImDrawData *drawData, int index)
             glDeleteSync(previous);
     }
     eglSwapBuffers(s_display, s_surface);
+
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, (GLuint)s_saved.drawFbo);
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, (GLuint)s_saved.readFbo);
+    glViewport(s_saved.viewport[0], s_saved.viewport[1], s_saved.viewport[2], s_saved.viewport[3]);
+    glClearColor(s_saved.clearColor[0], s_saved.clearColor[1], s_saved.clearColor[2], s_saved.clearColor[3]);
+    glColorMask(s_saved.colorMask[0], s_saved.colorMask[1], s_saved.colorMask[2], s_saved.colorMask[3]);
+    if (s_saved.scissor)
+        glEnable(GL_SCISSOR_TEST);
+    Unlock();
 }
 
 bool ReadFrameRGBA(uint32_t index, std::vector<uint8_t> &out, uint32_t &width, uint32_t &height)
 {
+    ContextGuard guard;
     if (CoreFrameTexture(index, width, height) == ImTextureID_Invalid)
         return false;
     GLuint fbo = 0;
@@ -387,8 +527,11 @@ bool ReadFrameRGBA(uint32_t index, std::vector<uint8_t> &out, uint32_t &width, u
     glBindFramebuffer(GL_READ_FRAMEBUFFER, fbo);
     glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, s_slots[index].texture, 0);
     std::vector<uint8_t> pixels((size_t)width * height * 4);
+    GLint packAlignment = 4;
+    glGetIntegerv(GL_PACK_ALIGNMENT, &packAlignment);
     glPixelStorei(GL_PACK_ALIGNMENT, 1);
     glReadPixels(0, 0, (GLsizei)width, (GLsizei)height, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+    glPixelStorei(GL_PACK_ALIGNMENT, packAlignment);
     glBindFramebuffer(GL_READ_FRAMEBUFFER, previous);
     glDeleteFramebuffers(1, &fbo);
     // GL rows run bottom-up
@@ -419,6 +562,7 @@ void GetSurfaceExtent(uint32_t &width, uint32_t &height)
 
 void SetVsync(bool enabled)
 {
+    ContextGuard guard;
     eglSwapInterval(s_display, enabled ? 1 : 0);
 }
 
@@ -426,6 +570,7 @@ ImTextureID CreateTextureRGBA(const unsigned char *rgba, int width, int height)
 {
     if (!rgba || width <= 0 || height <= 0)
         return ImTextureID_Invalid;
+    ContextGuard guard;
     GLint previous = 0;
     glGetIntegerv(GL_TEXTURE_BINDING_2D, &previous);
     GLuint texture = 0;
@@ -435,8 +580,11 @@ ImTextureID CreateTextureRGBA(const unsigned char *rgba, int width, int height)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    GLint unpackAlignment = 4;
+    glGetIntegerv(GL_UNPACK_ALIGNMENT, &unpackAlignment);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, unpackAlignment);
     glBindTexture(GL_TEXTURE_2D, previous);
     return (ImTextureID)(intptr_t)texture;
 }
@@ -445,6 +593,7 @@ void DestroyTexture(ImTextureID texture)
 {
     if (texture == ImTextureID_Invalid)
         return;
+    ContextGuard guard;
     GLuint name = (GLuint)(intptr_t)texture;
     glDeleteTextures(1, &name);
 }

@@ -1,23 +1,28 @@
 #!/bin/bash
 # Builds tico-mupen64plus.nro and tico-mupen64plus-module.zip (the module tico
 # installs into sdmc:/tico/modules/). Uses a local devkitPro install when there
-# is one, otherwise the switch-dev Docker image.
+# is one, otherwise the switch-dev-legacy Docker image: Mesa 20.1, OpenGL
+# through nvc0 only.
 #
+# With a Mesa that has NVK (the switch-dev image, or MESA_SDK_DIR) the NRO
+# also carries Vulkan: paraLLEl-RDP, Zink and the slang shaders. Without it,
+# GLideN64 on nvc0 is the only renderer.
+#
+#   SWITCH_DEV_IMAGE    the image to build in; ghcr.io/autorunhq/switch-dev for NVK
 #   MESA_SDK_DIR        a Horizon Mesa SDK (lib/ and include/) to link instead of
-#                       portlibs; needed for Zink, which portlibs' Mesa lacks.
-#                       mesa-switch's unified configuration (NVK, plus EGL with
-#                       nouveau and zink) installs one under
+#                       portlibs. mesa-switch's unified configuration (NVK, plus
+#                       EGL with nouveau and zink) installs one under
 #                       mesa-unified-install*/opt/devkitpro/portlibs/switch
 #   TICO_ENABLE_LOGGING 0 to build without sdmc:/tico/debug/mupen64plus.txt
 #   BUILD_JOBS          parallel jobs (default: all cores)
 
-SWITCH_DEV_IMAGE="${SWITCH_DEV_IMAGE:-ghcr.io/autorunhq/switch-dev:2026.10.05}"
+SWITCH_DEV_IMAGE="${SWITCH_DEV_IMAGE:-ghcr.io/danfromtico/switch-dev-legacy:2026.10.05.1}"
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 if [ ! -d /opt/devkitpro/devkitA64 ]; then
     MOUNTS=(-v "$ROOT_DIR:$ROOT_DIR")
     [ -n "$MESA_SDK_DIR" ] && MOUNTS+=(-v "$MESA_SDK_DIR:$MESA_SDK_DIR:ro")
     exec docker run --rm "${MOUNTS[@]}" -w "$ROOT_DIR" \
-        -e MESA_SDK_DIR -e TICO_ENABLE_LOGGING -e BUILD_JOBS \
+        -e SWITCH_DEV_IMAGE -e MESA_SDK_DIR -e TICO_ENABLE_LOGGING -e BUILD_JOBS \
         "$SWITCH_DEV_IMAGE" bash "$ROOT_DIR/build_mupen64plus_nro.sh" "$@"
 fi
 
@@ -37,14 +42,23 @@ JOBS="${BUILD_JOBS:-$(nproc 2>/dev/null || echo 4)}"
 # NACP version, and the version RetroAchievements sees in the User-Agent
 APP_VERSION="3.0.0"
 
-echo "=== Building tico-mupen64plus $APP_VERSION ==="
+# Vulkan when the Mesa has NVK's loaderless libvulkan.a.
+NVK_SRC="$MESA_SDK/lib/libvulkan.a"
+if [ -f "$NVK_SRC" ]; then VULKAN=1; else VULKAN=0; fi
+
+echo "=== Building tico-mupen64plus $APP_VERSION ($([ $VULKAN -eq 1 ] && echo "Vulkan + OpenGL" || echo "OpenGL only")) ==="
 
 #------------------------------------------------------------------------------
 # Step 1: mupen64plus, its plugins and tico/m64p
 #------------------------------------------------------------------------------
 echo "--- Step 1: libmupen64plus_tico.a ---"
 cd "$ROOT_DIR"
-make -j"$JOBS"
+# The objects sit beside their sources; rebuild them all when Vulkan comes or goes.
+if [ "$(cat .tico_vulkan 2>/dev/null)" != "$VULKAN" ]; then
+    make clean VULKAN=1 > /dev/null
+    echo "$VULKAN" > .tico_vulkan
+fi
+make -j"$JOBS" VULKAN=$VULKAN
 CORE_LIB="$ROOT_DIR/libmupen64plus_tico.a"
 
 #------------------------------------------------------------------------------
@@ -54,6 +68,8 @@ CORE_LIB="$ROOT_DIR/libmupen64plus_tico.a"
 # rebuilding when the submodule moves. Don't pass CMAKE_CXX_FLAGS here: it
 # replaces the toolchain's -mtp=soft, and glslang's thread_locals then read a
 # null thread pointer and crash on the first shader compile.
+GLSLANG_LIBS=()
+if [ $VULKAN -eq 1 ]; then
 echo "--- Step 2: glslang ---"
 if [ ! -f "$TICO_DIR/deps/glslang/CMakeLists.txt" ]; then
     git -C "$ROOT_DIR" submodule update --init tico/deps/glslang tico/deps/SPIRV-Reflect
@@ -69,6 +85,7 @@ GLSLANG_LIBS=(
     "$GLSLANG_BUILD/glslang/libglslang.a"
     "$GLSLANG_BUILD/glslang/libglslang-default-resource-limits.a"
 )
+fi
 
 #------------------------------------------------------------------------------
 # Step 3: NVK
@@ -76,9 +93,9 @@ GLSLANG_LIBS=(
 # NVK's loaderless libvulkan.a exports the vk* entry points as functions,
 # which collide with volk's function pointers (paraLLEl-RDP and the frontend
 # load through volk). Localize them; only vk_icd* is called from outside.
+NVK_ARCHIVE=
+if [ $VULKAN -eq 1 ]; then
 echo "--- Step 3: NVK ---"
-NVK_SRC="$MESA_SDK/lib/libvulkan.a"
-[ -f "$NVK_SRC" ] || { echo "Error: no NVK libvulkan.a in $MESA_SDK/lib"; exit 1; }
 # one localized copy per SDK, so switching SDKs never reuses another's
 NVK_CACHE="$ROOT_DIR/build_nvk/$(echo "$NVK_SRC" | md5sum | cut -c1-8)"
 mkdir -p "$NVK_CACHE"
@@ -90,6 +107,7 @@ if [ ! -f "$NVK_ARCHIVE" ] || [ "$NVK_SRC" -nt "$NVK_ARCHIVE" ]; then
     # Mesa merges NVK's archives with the host ar, which leaves the Rust
     # members out of the symbol index; rebuild it with the devkitA64 archiver.
     aarch64-none-elf-ranlib "$NVK_ARCHIVE"
+fi
 fi
 
 #------------------------------------------------------------------------------
@@ -106,7 +124,8 @@ PARALLEL_RDP="$ROOT_DIR/mupen64plus-video-paraLLEl/parallel-rdp"
 COMMON_FLAGS="-march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE -O2 -g -fno-omit-frame-pointer"
 COMMON_FLAGS="$COMMON_FLAGS -ffunction-sections -fdata-sections -D__SWITCH__ -DHAVE_LIBNX"
 COMMON_FLAGS="$COMMON_FLAGS -DLIBARCHIVE_STATIC -DVK_USE_PLATFORM_VI_NN -DVK_NO_PROTOTYPES -DTICO_APP_VERSION=\"$APP_VERSION\""
-COMMON_FLAGS="$COMMON_FLAGS -DIMGUI_IMPL_VULKAN_NO_PROTOTYPES -DIMGUI_DISABLE_DEFAULT_SHELL_FUNCTIONS"
+[ $VULKAN -eq 1 ] && COMMON_FLAGS="$COMMON_FLAGS -DTICO_HAVE_VULKAN"
+COMMON_FLAGS="$COMMON_FLAGS -DIMGUI_IMPL_VULKAN_NO_PROTOTYPES -DIMGUI_DISABLE_DEFAULT_SHELL_FUNCTIONS -DTICO_STB_IMAGE_WRITE_EXTERNAL"
 if [ "${TICO_ENABLE_LOGGING:-1}" -eq 0 ]; then
     COMMON_FLAGS="$COMMON_FLAGS -DDISABLE_LOGGING"
 fi
@@ -120,15 +139,17 @@ COMMON_FLAGS="$COMMON_FLAGS -specs=$LIBNX/switch.specs"
 CXXFLAGS="$COMMON_FLAGS -std=gnu++17 -fvisibility-inlines-hidden -fno-rtti -fno-exceptions"
 
 TICO_SOURCES=(
-    TicoMain.cpp TicoCore.cpp TicoRenderer.cpp TicoVulkan.cpp TicoGL.cpp
-    TicoShaderChain.cpp TicoSlang.cpp UsbStorage.cpp TicoStubs.cpp
+    TicoMain.cpp TicoCore.cpp TicoRenderer.cpp TicoGL.cpp UsbStorage.cpp TicoStubs.cpp
     overlay/imgui_overlay.cpp overlay/overlay_ui.cpp overlay/ra_alerts.cpp
     overlay/tico_config.cpp overlay/translation_manager.cpp
     deps/imgui/imgui.cpp deps/imgui/imgui_draw.cpp deps/imgui/imgui_tables.cpp
     deps/imgui/imgui_widgets.cpp deps/imgui/imgui_demo.cpp
-    deps/imgui/backends/imgui_impl_vulkan.cpp
 )
-TICO_C_SOURCES=(glad.c deps/SPIRV-Reflect/spirv_reflect.c)
+TICO_C_SOURCES=(glad.c)
+if [ $VULKAN -eq 1 ]; then
+    TICO_SOURCES+=(TicoVulkan.cpp TicoShaderChain.cpp TicoSlang.cpp deps/imgui/backends/imgui_impl_vulkan.cpp)
+    TICO_C_SOURCES+=(deps/SPIRV-Reflect/spirv_reflect.c)
+fi
 RCHEEVOS_SOURCES=($(find "$ROOT_DIR/rcheevos/src" -type f -name "*.c" ! -name "rc_client_external.c" ! -name "rc_libretro.c"))
 
 OBJS=()
@@ -158,19 +179,25 @@ echo "--- Step 5: link ---"
 ELF="$BUILD_DIR/tico-mupen64plus.elf"
 LINK_FLAGS="-specs=$LIBNX/switch.specs -march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE"
 LINK_FLAGS="$LINK_FLAGS -Wl,--gc-sections -Wl,-Map=$BUILD_DIR/tico-mupen64plus.map"
-LINK_FLAGS="$LINK_FLAGS -Wl,-u,vk_icdGetInstanceProcAddr -Wl,-u,vk_icdNegotiateLoaderICDInterfaceVersion"
+[ $VULKAN -eq 1 ] && LINK_FLAGS="$LINK_FLAGS -Wl,-u,vk_icdGetInstanceProcAddr -Wl,-u,vk_icdNegotiateLoaderICDInterfaceVersion"
 
 # tico/deps/usbhsfs first: libusbhsfs (FAT/exFAT) that also reads NTFS through usbntfs.
-# Mesa's EGL holds both GL drivers (NVC0, and Zink when the SDK has it).
+# Mesa's EGL holds the GL drivers (NVC0, and Zink when the SDK has it). Mesa
+# 20.1 keeps everything in libEGL.a; Mesa 26 splits out libGL and its utilities.
 LIBS="-L$TICO_DIR/deps/usbhsfs/lib -L$MESA_SDK/lib -L$PORTLIBS/lib -L$LIBNX/lib"
 LIBS="$LIBS -lSDL2_mixer -lmpg123 -lmodplug -lopusfile -lopus -lvorbisidec -logg -lSDL2"
-LIBS="$LIBS -lEGL -lGL -lglapi -lmesa_util_c11 -lblake3 -lmesa_util -lmesa_util_simd -lxmlconfig -lexpat"
-[ -f "$MESA_SDK/lib/libdrm_nouveau.a" ] && LIBS="$LIBS -ldrm_nouveau"
+LIBS="$LIBS -lEGL"
+[ -f "$MESA_SDK/lib/libGL.a" ] && LIBS="$LIBS -lGL"
+LIBS="$LIBS -lglapi"
+for lib in mesa_util_c11 blake3 mesa_util mesa_util_simd xmlconfig expat; do
+    [ -f "$MESA_SDK/lib/lib$lib.a" ] && LIBS="$LIBS -l$lib"
+done
+[ -f "$MESA_SDK/lib/libdrm_nouveau.a" ] || [ -f "$PORTLIBS/lib/libdrm_nouveau.a" ] && LIBS="$LIBS -ldrm_nouveau"
 LIBS="$LIBS -lcurl -lmbedtls -lmbedx509 -lmbedcrypto -larchive -lbz2 -llzma -llz4 -lz -lzstd"
 LIBS="$LIBS -lusbhsfs -lusbntfs -lnx -lm -lstdc++ -lpthread"
 
 "$CXX" $LINK_FLAGS "${OBJS[@]}" "$CORE_LIB" "${GLSLANG_LIBS[@]}" \
-    -Wl,--start-group "$NVK_ARCHIVE" $LIBS -Wl,--end-group -o "$ELF"
+    -Wl,--start-group $NVK_ARCHIVE $LIBS -Wl,--end-group -o "$ELF"
 
 #------------------------------------------------------------------------------
 # Step 6: NRO
@@ -180,11 +207,38 @@ NRO="$BUILD_DIR/tico-mupen64plus.nro"
 NACP="$BUILD_DIR/tico-mupen64plus.nacp"
 "$DEVKITPRO/tools/bin/nacptool" --create "tico Mupen64Plus" "ticoverse.com" "$APP_VERSION" "$NACP"
 
+# Without Vulkan, the settings leave out what only it runs: the renderer
+# choice, paraLLEl-RDP's tab and paraLLEl-RSP's audio option.
+SETTINGS="$BUILD_DIR/settings.json"
+if [ $VULKAN -eq 1 ]; then
+    cp "$TICO_DIR/module/settings.json" "$SETTINGS"
+else
+    python3 - "$TICO_DIR/module/settings.json" "$SETTINGS" <<'PY'
+import json, sys
+VULKAN_ONLY = {"tico_renderer", "mupen64plus-parallel-rsp-hle-audio"}
+with open(sys.argv[1]) as f:
+    settings = json.load(f)
+tabs = []
+for tab in settings["tabs"]:
+    if tab["name"].endswith("_tab_parallel"):
+        continue
+    for section in tab["sections"]:
+        section["options"] = [o for o in section["options"] if o["key"] not in VULKAN_ONLY]
+    tab["sections"] = [s for s in tab["sections"] if s["options"]]
+    tabs.append(tab)
+settings["tabs"] = tabs
+with open(sys.argv[2], "w") as f:
+    json.dump(settings, f, indent=2, ensure_ascii=False)
+    f.write("\n")
+PY
+fi
+
 ROMFS="$BUILD_DIR/romfs"
 mkdir -p "$ROMFS/module"
-cp -R "$TICO_DIR/fonts" "$TICO_DIR/lang" "$TICO_DIR/assets" "$TICO_DIR/shaders" "$ROMFS/"
+cp -R "$TICO_DIR/fonts" "$TICO_DIR/lang" "$TICO_DIR/assets" "$ROMFS/"
+[ $VULKAN -eq 1 ] && cp -R "$TICO_DIR/shaders" "$ROMFS/"
 # the overlay builds its settings menu from the module's own definition
-cp "$TICO_DIR/module/settings.json" "$ROMFS/module/"
+cp "$SETTINGS" "$ROMFS/module/"
 "$DEVKITPRO/tools/bin/elf2nro" "$ELF" "$NRO" --nacp="$NACP" --romfsdir="$ROMFS"
 
 #------------------------------------------------------------------------------
@@ -201,6 +255,7 @@ MODULE_ID=$(sed -n 's/.*"id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$MODUL
 MODULE_OUT="$BUILD_DIR/module/$MODULE_ID"
 mkdir -p "$MODULE_OUT"
 cp -r "$MODULE_SRC/." "$MODULE_OUT/"
+cp "$SETTINGS" "$MODULE_OUT/settings.json"
 cp "$NRO" "$MODULE_OUT/"
 # tico merges these into its own strings to label the settings screen
 cp -R "$TICO_DIR/lang" "$MODULE_OUT/"

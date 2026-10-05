@@ -4,6 +4,10 @@
 #include <memory>
 #include <set>
 
+#ifdef TICO_M64P
+extern "C" unsigned tico_m64p_gl_default_framebuffer(void);
+#endif
+
 extern "C" {
 	extern void context_reset();
 	bool threaded_gl_safe_shutdown = false;
@@ -843,6 +847,14 @@ namespace opengl {
 
 	void FunctionWrapper::wrBindFramebuffer(GLenum target, GLuint framebuffer)
 	{
+#ifdef TICO_M64P
+		// GLideN64's default framebuffer is 0, as under libretro's glsm; it
+		// stands for the frontend's. Its name must not be GLideN64's to keep:
+		// frame buffers start with their copy FBO set to the default one,
+		// and delete it when they go.
+		if (framebuffer == 0)
+			framebuffer = tico_m64p_gl_default_framebuffer();
+#endif
 		if (m_threaded_wrapper)
 			executeCommand(GlBindFramebufferCommand::get(target, framebuffer));
 		else

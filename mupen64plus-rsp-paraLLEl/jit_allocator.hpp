@@ -22,6 +22,8 @@ public:
 	void *allocate_code(size_t size);
 	bool commit_code(void *code, size_t size);
 	void *get_executable_code(void *code) const;
+	// Unmaps every block; code handed out before is gone.
+	void release();
 
 private:
 	struct Block
