@@ -180,28 +180,59 @@ void TicoCore::LoadSaveData()
     }
 }
 
-void TicoCore::SaveSaveData()
+// Writes each save the game has whose bytes differ from what its file holds.
+void TicoCore::WriteSaveComponents(const uint8_t *saves, size_t total)
 {
-    size_t total = 0;
-    const uint8_t *saves = (const uint8_t *)tico_m64p_save_memory(&total);
     TicoConfig::MakeDirs(TicoConfig::SavesPath());
     const std::string base = TicoConfig::SavesPath() + FilenameStem(m_gamePath);
+    const bool known = m_savesWritten.size() == total;
+    if (!known)
+        m_savesWritten.assign(total, 0);
     for (const SaveComponent &c : GameSaveComponents())
     {
         if (c.offset + c.size > total)
             continue;
+        if (known && memcmp(m_savesWritten.data() + c.offset, saves + c.offset, c.size) == 0)
+            continue;
         const std::string path = base + c.extension;
         if (TicoSafeFile::Write(path, saves + c.offset, c.size, kSaveBackups))
+        {
+            memcpy(m_savesWritten.data() + c.offset, saves + c.offset, c.size);
             tico_debug_log("Saved %s to %s", c.label, path.c_str());
+        }
         else
             tico_debug_log("ERROR: could not save %s to %s", c.label, path.c_str());
     }
 }
 
-void TicoCore::FlushSaves()
+// Emulation thread, about once a second: hand a copy of the save block to the
+// main thread when the game changed it.
+void TicoCore::CheckSavesChanged()
 {
-    if (m_gameLoaded)
-        SaveSaveData();
+    if (++m_saveCheckFrames < 60)
+        return;
+    m_saveCheckFrames = 0;
+    size_t total = 0;
+    const uint8_t *saves = (const uint8_t *)tico_m64p_save_memory(&total);
+    if (!saves || m_savesSeen.size() != total || memcmp(m_savesSeen.data(), saves, total) == 0)
+        return;
+    m_savesSeen.assign(saves, saves + total);
+    std::lock_guard<std::mutex> lock(m_savesMutex);
+    m_savesPending = m_savesSeen;
+    m_savesChanged = true;
+}
+
+void TicoCore::WriteChangedSaves()
+{
+    std::vector<uint8_t> saves;
+    {
+        std::lock_guard<std::mutex> lock(m_savesMutex);
+        if (!m_savesChanged)
+            return;
+        saves.swap(m_savesPending);
+        m_savesChanged = false;
+    }
+    WriteSaveComponents(saves.data(), saves.size());
 }
 
 //==============================================================================
@@ -839,6 +870,13 @@ bool TicoCore::LoadGame(const std::string &path)
 
     m_gameLoaded = true;
     LoadSaveData();
+    {
+        // what the files hold now; the game's changes are written from here
+        size_t total = 0;
+        const uint8_t *saves = (const uint8_t *)tico_m64p_save_memory(&total);
+        m_savesWritten.assign(saves, saves + total);
+        m_savesSeen = m_savesWritten;
+    }
     LoadCheats();
     return true;
 }
@@ -891,7 +929,17 @@ void TicoCore::UnloadGame()
     tico_debug_log("Stopping the emulator...");
     tico_m64p_stop();
     m_started = false;
-    SaveSaveData();
+    {
+        // the emulator has stopped: write what the block holds now
+        std::lock_guard<std::mutex> lock(m_savesMutex);
+        m_savesChanged = false;
+        m_savesPending.clear();
+    }
+    {
+        size_t total = 0;
+        const uint8_t *saves = (const uint8_t *)tico_m64p_save_memory(&total);
+        WriteSaveComponents(saves, total);
+    }
     if (m_rcClient)
     {
         std::lock_guard<std::mutex> lock(m_raMutex);
@@ -936,6 +984,7 @@ void TicoCore::RunRACallbacks()
 
 void TicoCore::OnFrame()
 {
+    CheckSavesChanged();
     if (!m_rcClient)
         return;
     std::lock_guard<std::mutex> lock(m_raMutex);

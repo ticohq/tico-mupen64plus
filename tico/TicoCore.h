@@ -128,9 +128,12 @@ public:
     bool SaveState(const std::string &path);
     bool LoadState(const std::string &path);
 
-    /// @brief Write the cartridge and pak saves now (they are written on
-    /// unload too).
-    void FlushSaves();
+    /// @brief Main thread: write the cartridge and pak saves the game changed
+    /// since they were last written, so a crash or a power-off loses nothing
+    /// the game saved. The emulation thread notices the change (OnFrame); this
+    /// is cheap when there is none, so call it every loop. Unloading writes
+    /// whatever is left.
+    void WriteChangedSaves();
 
     /// True while rc_client runs the session in hardcore mode. Loading states
     /// (and rewind, cheats, slow motion) must stay unavailable then.
@@ -146,8 +149,8 @@ public:
     /// Main thread, with the emulation thread held.
     void Idle();
 
-    /// Once per emulated frame, on the emulation thread: achievements and
-    /// the RetroAchievements server's answers.
+    /// Once per emulated frame, on the emulation thread: changed saves,
+    /// achievements and the RetroAchievements server's answers.
     void OnFrame();
 
     /// @brief Core options. LoadConfig reads mupen64plus.jsonc (once);
@@ -172,7 +175,17 @@ public:
 private:
     bool Init();
     void LoadSaveData();
-    void SaveSaveData();
+    void WriteSaveComponents(const uint8_t *saves, size_t total);
+    void CheckSavesChanged();
+
+    /// The core's save block as the files hold it (main thread), as the
+    /// emulation thread last saw it, and a changed copy it handed over.
+    std::vector<uint8_t> m_savesWritten;
+    std::vector<uint8_t> m_savesSeen;
+    std::vector<uint8_t> m_savesPending;
+    bool m_savesChanged = false;
+    std::mutex m_savesMutex;
+    unsigned m_saveCheckFrames = 0;
     void LoadCheats();
     void ApplyCheats();
     void UpdateMemoryMaps();

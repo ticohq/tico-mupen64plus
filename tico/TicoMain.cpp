@@ -2332,6 +2332,10 @@ int main(int argc, char *argv[])
         HandleInput();
         if (!g_running)
             break;
+        // what the game saved since the last loop reaches the SD card now,
+        // not only on a clean exit
+        if (g_core)
+            g_core->WriteChangedSaves();
 
         const bool paused = g_menuOpen || !g_core;
         if (paused)
