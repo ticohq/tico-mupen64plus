@@ -53,7 +53,7 @@ unsigned int savestates_get_slot(void);
 void savestates_set_autoinc_slot(int b);
 void savestates_inc_slot(void);
 
-#ifndef __LIBRETRO__
+#ifndef TICO_M64P
 int savestates_save_m64p(const struct device* dev, char *filepath);
 int savestates_load_m64p(struct device* dev, char *filepath);
 #else

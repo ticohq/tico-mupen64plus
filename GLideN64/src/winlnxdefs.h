@@ -30,7 +30,7 @@
 #ifndef WINLNXDEFS_H
 #define WINLNXDEFS_H
 
-#ifndef __LIBRETRO__
+#ifndef TICO_M64P
 #include <dlfcn.h>
 #endif
 
@@ -97,7 +97,7 @@ typedef const char 	*LPCSTR;
 
 static inline const char *GetPluginDir()
 {
-#ifdef __LIBRETRO__
+#ifdef TICO_M64P
     return "/";
 #else
    static char path[PATH_MAX];
@@ -127,7 +127,7 @@ static inline const char *GetPluginDir()
 #endif
 
 	return path;
-#endif /* __LIBRETRO__ */
+#endif /* TICO_M64P */
 }
 
 #endif

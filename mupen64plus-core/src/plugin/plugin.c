@@ -41,7 +41,7 @@
 #include "main/version.h"
 #include "osal/dynamiclib.h"
 #include "plugin.h"
-#ifdef __LIBRETRO__
+#ifdef TICO_M64P
 #include "mupen64plus-next_common.h"
 #endif
 
@@ -392,7 +392,7 @@ m64p_error plugin_check(void)
     return M64ERR_SUCCESS;
 }
 
-#ifdef __LIBRETRO__
+#ifdef TICO_M64P
 enum rdp_plugin_type current_rdp_type = RDP_PLUGIN_NONE;
 enum rsp_plugin_type current_rsp_type = RSP_PLUGIN_NONE;
 

@@ -76,8 +76,6 @@
 #include "util.h"
 #include "netplay.h"
 
-#include <libretro_private.h>
-#include <libco.h>
 
 #ifdef M64P_NETPLAY
 #undef SDL_GetTicks
@@ -89,11 +87,13 @@
 #include <sys/stat.h>
 #endif
 
-#ifdef __LIBRETRO__
-#include <file/file_path.h>
-#include <libretro_memory.h>
+#include <limits.h>
+#include <tico_m64p_memory.h>
 #include <mupen64plus-next_common.h>
-#endif // __LIBRETRO__
+
+#ifndef PATH_DEFAULT_SLASH
+#define PATH_DEFAULT_SLASH() "/"
+#endif
 
 #ifdef DBG
 #include "debugger/dbg_debugger.h"
@@ -250,17 +250,12 @@ void main_message(m64p_msg_level level, unsigned int corner, const char *format,
     DebugMessage(level, "%s", buffer);
 }
 
-extern retro_input_poll_t poll_cb;
 static void main_check_inputs(void)
 {
 #ifdef WITH_LIRC
     lircCheckInput();
 #endif
-    if(!(current_rdp_type == RDP_PLUGIN_GLIDEN64 && EnableThreadedRenderer))
-    {
-        // Input Polling will be forced to early if Threaded GLideN64
-        poll_cb();
-    }
+    tico_m64p_input_poll();
 }
 
 /*********************************************************************************************************
@@ -826,7 +821,6 @@ void new_vi(void)
     main_check_inputs();
 
     netplay_check_sync(&g_dev.r4300.cp0);
-    retro_return();
 }
 
 static void main_switch_pak(int control_id)
@@ -865,7 +859,7 @@ void main_switch_plugin_pak(int control_id)
     main_switch_pak(control_id);
 }
 
-void save_storage_file_libretro(void* storage)
+void save_storage_file_tico(void* storage)
 {
 }
 
@@ -950,8 +944,7 @@ static void load_dd_rom(uint8_t* rom, size_t* rom_size, uint8_t* disk_region)
         ? NULL
         : g_media_loader.get_dd_rom(g_media_loader.cb_data);
 
-    char* sys_pathname;
-    environ_cb(RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY, &sys_pathname);
+    const char* sys_pathname = tico_m64p_system_dir();
     char* pathname = (char*)malloc(2048);
     strncpy(pathname, sys_pathname, 2048 - 1);
     if (pathname[(strlen(pathname)-1)] != '/' && pathname[(strlen(pathname)-1)] != '\\')
@@ -960,7 +953,7 @@ static void load_dd_rom(uint8_t* rom, size_t* rom_size, uint8_t* disk_region)
     strcat(pathname, PATH_DEFAULT_SLASH());
     strcat(pathname, "IPL.n64");
 
-    if(retro_dd_path_img)
+    if(tico_dd_path_img)
     {
         dd_ipl_rom_filename = pathname;
     }
@@ -1023,13 +1016,13 @@ no_dd:
     *rom_size = 0;
 }
 
-extern char* retro_dd_path_img;
-extern char* retro_dd_path_rom;
+extern char* tico_dd_path_img;
+extern char* tico_dd_path_rom;
 static int load_dd_disk(struct dd_disk* dd_disk, const struct storage_backend_interface** dd_idisk)
 {
     /* ask the core loader for DD disk filename */
     char* dd_disk_filename = (g_media_loader.get_dd_disk == NULL)
-        ? (retro_dd_path_img ? strdup(retro_dd_path_img) : NULL)
+        ? (tico_dd_path_img ? strdup(tico_dd_path_img) : NULL)
         : g_media_loader.get_dd_disk(g_media_loader.cb_data);
 
     //printf("Load DD disk %s\n", dd_disk_filename);
@@ -1235,7 +1228,7 @@ static void init_gb_rom(void* opaque, void** storage, const struct storage_backe
 
     /* Ask the core loader for rom filename */
     char* rom_filename = (g_media_loader.get_gb_cart_rom == NULL)
-        ? (retro_transferpak_rom_path ? strdup(retro_transferpak_rom_path) : NULL)
+        ? (tico_transferpak_rom_path ? strdup(tico_transferpak_rom_path) : NULL)
         : g_media_loader.get_gb_cart_rom(g_media_loader.cb_data, data->control_id);
 
     /* Handle the no cart case */
@@ -1245,11 +1238,11 @@ static void init_gb_rom(void* opaque, void** storage, const struct storage_backe
 
     /* Open ROM file */
     if (open_rom_file_storage(&data->rom_fstorage, rom_filename) != file_ok) {
-        log_cb(RETRO_LOG_ERROR, "Failed to load ROM file: %s\n", rom_filename);
+        tico_m64p_log(TICO_LOG_ERROR, "Failed to load ROM file: %s\n", rom_filename);
         goto no_cart;
     }
 
-    log_cb(RETRO_LOG_INFO, "GB Loader ROM: %s - %zu\n",
+    tico_m64p_log(TICO_LOG_INFO, "GB Loader ROM: %s - %zu\n",
             data->rom_fstorage.filename,
             data->rom_fstorage.size);
 
@@ -1279,7 +1272,7 @@ static void init_gb_ram(void* opaque, size_t ram_size, void** storage, const str
 
     /* Ask the core loader for ram filename */
     char* ram_filename = (g_media_loader.get_gb_cart_ram == NULL)
-        ? (retro_transferpak_ram_path ? strdup(retro_transferpak_ram_path) : NULL)
+        ? (tico_transferpak_ram_path ? strdup(tico_transferpak_ram_path) : NULL)
         : g_media_loader.get_gb_cart_ram(g_media_loader.cb_data, data->control_id);
 
     /* Handle the no RAM case
@@ -1295,13 +1288,13 @@ static void init_gb_ram(void* opaque, size_t ram_size, void** storage, const str
     int err = open_file_storage(&data->ram_fstorage, ram_size, ram_filename);
     if (err == file_open_error) {
         memset(data->ram_fstorage.data, 0, data->ram_fstorage.size);
-        log_cb(RETRO_LOG_INFO, "Providing default RAM content\n");
+        tico_m64p_log(TICO_LOG_INFO, "Providing default RAM content\n");
     }
     else if (err == file_read_error) {
-        log_cb(RETRO_LOG_WARN, "Size mismatch between expected RAM size and effective file size\n");
+        tico_m64p_log(TICO_LOG_WARN, "Size mismatch between expected RAM size and effective file size\n");
     }
 
-    log_cb(RETRO_LOG_INFO, "GB Loader RAM: %s - %zu\n",
+    tico_m64p_log(TICO_LOG_INFO, "GB Loader RAM: %s - %zu\n",
             data->ram_fstorage.filename,
             data->ram_fstorage.size);
 
@@ -1344,10 +1337,10 @@ void main_change_gb_cart(int control_id)
 
     if (tpk->gb_cart != NULL) {
         const uint8_t* rom_data = gb_cart->irom_storage->data(gb_cart->rom_storage);
-        log_cb(RETRO_LOG_INFO, "Inserting GB cart %s into transferpak %u\n", rom_data + 0x134, control_id);
+        tico_m64p_log(TICO_LOG_INFO, "Inserting GB cart %s into transferpak %u\n", rom_data + 0x134, control_id);
     }
     else {
-        log_cb(RETRO_LOG_WARN, "Removing GB cart from transferpak %u\n", control_id);
+        tico_m64p_log(TICO_LOG_WARN, "Removing GB cart from transferpak %u\n", control_id);
     }
 }
 
@@ -1379,7 +1372,7 @@ m64p_error main_run(void)
     size_t dd_rom_size;
     struct dd_disk dd_disk;
     m64p_error failure_rval;
-    struct audio_out_backend_interface audio_out_backend_libretro;
+    struct audio_out_backend_interface audio_out_backend_tico;
 
     int control_ids[GAME_CONTROLLERS_COUNT];
     struct controller_input_compat cin_compats[GAME_CONTROLLERS_COUNT];
@@ -1448,9 +1441,9 @@ m64p_error main_run(void)
 #endif
 
     /* setup backends */
-    extern void set_audio_format_via_libretro(void* user_data, unsigned int frequency);
-    extern void push_audio_samples_via_libretro(void* user_data, const void* buffer, size_t size);
-    audio_out_backend_libretro = (struct audio_out_backend_interface){ set_audio_format_via_libretro, push_audio_samples_via_libretro };
+    extern void tico_m64p_audio_set_format(void* user_data, unsigned int frequency);
+    extern void tico_m64p_audio_push_samples(void* user_data, const void* buffer, size_t size);
+    audio_out_backend_tico = (struct audio_out_backend_interface){ tico_m64p_audio_set_format, tico_m64p_audio_push_samples };
     
     /* Fill-in l_pak_type_idx and l_ipaks according to game compatibility */
     k = 0;
@@ -1687,7 +1680,7 @@ m64p_error main_run(void)
                 no_compiled_jump,
                 randomize_interrupt,
                 g_start_address,
-                &g_dev.ai, &audio_out_backend_libretro, ((float)ROM_SETTINGS.aidmamodifier / 100.0),
+                &g_dev.ai, &audio_out_backend_tico, ((float)ROM_SETTINGS.aidmamodifier / 100.0),
                 si_dma_duration,
                 rdram_size,
                 joybus_devices, ijoybus_devices,
@@ -1760,18 +1753,6 @@ m64p_error main_run(void)
     // clean up
     g_EmulatorRunning = 0;
     StateChanged(M64CORE_EMU_STATE, M64EMU_STOPPED);
-
-    /**
-     * Actually never returns.
-     * Jump back to frontend for deinit
-     */
-    extern cothread_t retro_thread;
-
-    // For GLN64 Threaded GL we just sanely return, exit sync is handled elsewhere
-    if(!(current_rdp_type == RDP_PLUGIN_GLIDEN64 && EnableThreadedRenderer))
-    {
-        co_switch(retro_thread);
-    }
 
     return M64ERR_SUCCESS;
 

@@ -1,6 +1,6 @@
 #include <mupen64plus-next_common.h>
 #include "GLideN64_mupenplus.h"
-#include "GLideN64_libretro.h"
+#include "GLideN64_gl_features.h"
 #include <assert.h>
 #include <errno.h>
 #include <stdlib.h>

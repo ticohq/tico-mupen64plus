@@ -27,7 +27,7 @@ extern "C" {
 #endif /* __cplusplus */
 
 #include <stdbool.h>
-#include <libretro.h>
+#include <stdint.h>
 
 #include "api/m64p_common.h"
 #include "api/m64p_plugin.h"
@@ -55,41 +55,71 @@ void plugin_connect_rsp_api(enum rsp_plugin_type type);
 void plugin_connect_rdp_api(enum rdp_plugin_type type);
 void plugin_connect_all();
 
-uint32_t get_retro_screen_width();
-uint32_t get_retro_screen_height();
+uint32_t m64p_screen_width();
+uint32_t m64p_screen_height();
 
 extern enum rdp_plugin_type current_rdp_type;
 extern enum rsp_plugin_type current_rsp_type;
-extern retro_environment_t environ_cb;
-extern bool libretro_swap_buffer;
+
+/* ------------------------------------------------------------------------
+ * The tico frontend (tico/m64p/tico_m64p.c). The core and the plugins call
+ * these; tico_m64p.c forwards them to the frontend's callbacks.
+ * ---------------------------------------------------------------------- */
+enum tico_log_level
+{
+   TICO_LOG_DEBUG = 0,
+   TICO_LOG_INFO,
+   TICO_LOG_WARN,
+   TICO_LOG_ERROR
+};
+void tico_m64p_log(enum tico_log_level level, const char *fmt, ...);
+
+/* where the core looks for its own data (mupen64plus.ini, the 64DD IPL, the
+ * GLideN64 shader and texture caches) */
+const char *tico_m64p_system_dir(void);
+
+/* on every VI, from the emulation thread, before the core reads the pads */
+void tico_m64p_input_poll(void);
+
+/* paraLLEl-RDP scanned out a frame (emulation thread) */
+void tico_m64p_present_vulkan(unsigned width, unsigned height);
+/* GLideN64 swapped buffers; the emulation thread's GL context is current */
+void tico_m64p_present_gl(void);
+/* the framebuffer GLideN64 draws its output into */
+unsigned tico_m64p_gl_default_framebuffer(void);
+void *tico_m64p_gl_get_proc_address(const char *name);
+
+/* RDRAM and the cartridge as the RetroAchievements client reads them */
+struct tico_m64p_memory_region
+{
+   void *ptr;
+   uint32_t start;
+   uint32_t length;
+   bool read_only;
+};
+void tico_m64p_set_memory_regions(const struct tico_m64p_memory_region *regions, unsigned count);
 
 // Misc Globals
 extern CONTROL Controls[4];
 extern struct xoshiro256pp_state l_mpk_idgen;
 
 // Savestate globals
-extern bool retro_savestate_complete;
-extern int  retro_savestate_result;
+extern bool tico_savestate_complete;
+extern int  tico_savestate_result;
 
 // 64DD globals
-extern char* retro_dd_path_img;
-extern char* retro_dd_path_rom;
+extern char* tico_dd_path_img;
+extern char* tico_dd_path_rom;
 
 // Other Subsystems
-extern char* retro_transferpak_rom_path;
-extern char* retro_transferpak_ram_path;
+extern char* tico_transferpak_rom_path;
+extern char* tico_transferpak_ram_path;
 
-// Threaded GL Callback
-extern void gln64_thr_gl_invoke_command_loop();
-extern bool threaded_gl_safe_shutdown;
-
-// GLN64 context management (for libretro context_destroy/context_reset)
+// GLN64 context management
 extern void gln64DestroyGfxContext(void);
 extern void gln64ReinitGfxContext(void);
 
 // Core options
-extern uint32_t CoreOptionCategoriesSupported;
-extern uint32_t CoreOptionUpdateDisplayCbSupported;
 // GLN64
 extern uint32_t bilinearMode;
 extern uint32_t EnableHybridFilter;
@@ -145,60 +175,9 @@ extern uint32_t OverscanLeft;
 extern uint32_t OverscanRight;
 extern uint32_t OverscanBottom;
 
-// Others
-#define RETRO_MEMORY_DD 0x100 + 1
-#define RETRO_GAME_TYPE_DD 1
-
-#define RETRO_MEMORY_TRANSFERPAK 0x100 + 2
-#define RETRO_GAME_TYPE_TRANSFERPAK 2
-
-#if defined(HAVE_PARALLEL_RDP)
-#define FLAVOUR_VERSION "-Vulkan"
-#elif defined(HAVE_OPENGLES2)
-#define FLAVOUR_VERSION "-GLES2"
-#elif defined(HAVE_OPENGLES3)
-#define FLAVOUR_VERSION "-GLES3"
-#else
-#define FLAVOUR_VERSION "-OpenGL"
-#endif
-
-#ifndef GIT_VERSION
-#define GIT_VERSION " git"
-#endif
-
-// Keep it optional (f.e. Raspberry Pi Platforms override it in Makefile)
 #ifndef CORE_NAME
 #define CORE_NAME "mupen64plus"
 #endif
-
-// RetroArch Extensions
-#define RETRO_ENVIRONMENT_RETROARCH_START_BLOCK 0x800000
-#define RETRO_ENVIRONMENT_SET_SAVE_STATE_IN_BACKGROUND (2 | RETRO_ENVIRONMENT_RETROARCH_START_BLOCK)
-                                            /* bool * --
-                                            * Boolean value that tells the front end to save states in the
-                                            * background or not.
-                                            */
-
-#define RETRO_ENVIRONMENT_GET_CLEAR_ALL_THREAD_WAITS_CB (3 | RETRO_ENVIRONMENT_RETROARCH_START_BLOCK)
-                                            /* retro_environment_t * --
-                                            * Provides the callback to the frontend method which will cancel
-                                            * all currently waiting threads.  Used when coordination is needed
-                                            * between the core and the frontend to gracefully stop all threads.
-                                            */
-
-#define RETRO_ENVIRONMENT_POLL_TYPE_OVERRIDE (4 | RETRO_ENVIRONMENT_RETROARCH_START_BLOCK)
-                                            /* unsigned * --
-                                            * Tells the frontend to override the poll type behavior. 
-                                            * Allows the frontend to influence the polling behavior of the
-                                            * frontend.
-                                            *
-                                            * Will be unset when retro_unload_game is called.
-                                            *
-                                            * 0 - Don't Care, no changes, frontend still determines polling type behavior.
-                                            * 1 - Early
-                                            * 2 - Normal
-                                            * 3 - Late
-                                            */
 
 #ifdef __cplusplus
 }

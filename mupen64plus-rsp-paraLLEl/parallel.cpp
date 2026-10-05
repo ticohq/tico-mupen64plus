@@ -61,7 +61,7 @@ extern "C"
 	void hleRomClosed(void);
 	int hleDoAudioTask(void);
 
-#ifdef TICO_STANDALONE
+#ifdef TICO_M64P
 	// RSP time per OSTask type (0 graphics, 1 audio, 2 other), read by the frontend
 	// on the emu thread to see what the RSP spends its time on.
 	uint64_t tico_rsp_task_ns[3];
@@ -72,11 +72,11 @@ extern "C"
 		if (parallel_rsp_hle_audio && !(*RSP::rsp.SP_STATUS_REG & SP_STATUS_HALT) &&
 		    *reinterpret_cast<const uint32_t *>(RSP::rsp.DMEM + 0xfc0) == 2)
 		{
-#ifdef TICO_STANDALONE
+#ifdef TICO_M64P
 			const auto hle_start = std::chrono::steady_clock::now();
 #endif
 			const bool handled = hleDoAudioTask() != 0;
-#ifdef TICO_STANDALONE
+#ifdef TICO_M64P
 			if (handled)
 				tico_rsp_task_ns[1] += std::chrono::duration_cast<std::chrono::nanoseconds>(
 				                           std::chrono::steady_clock::now() - hle_start).count();
@@ -85,7 +85,7 @@ extern "C"
 				return cycles;
 		}
 
-#ifdef TICO_STANDALONE
+#ifdef TICO_M64P
 		const uint32_t task_type = *reinterpret_cast<const uint32_t *>(RSP::rsp.DMEM + 0xfc0);
 		const auto start = std::chrono::steady_clock::now();
 		unsigned int ret = do_rsp_cycles(cycles);

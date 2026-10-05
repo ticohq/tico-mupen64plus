@@ -12,15 +12,22 @@
 #include <sys/stat.h>
 #endif
 
-#include <libretro_private.h>
+#include <mupen64plus-next_common.h>
 
-extern retro_environment_t environ_cb;
-
-extern "C" void retroChangeWindow()
-{
-	dwnd().setToggleFullscreen();
-	dwnd().changeWindow();
-}
+/* GLideN64 reaches the video extension through these. The tico frontend
+ * implements VidExt (tico/m64p/vidext_tico.c), linked into the same binary. */
+ptr_VidExt_Init                  CoreVideo_Init = VidExt_Init;
+ptr_VidExt_Quit                  CoreVideo_Quit = VidExt_Quit;
+ptr_VidExt_ListFullscreenModes   CoreVideo_ListFullscreenModes = VidExt_ListFullscreenModes;
+ptr_VidExt_SetVideoMode          CoreVideo_SetVideoMode = VidExt_SetVideoMode;
+ptr_VidExt_SetVideoModeWithRate  CoreVideo_SetVideoModeWithRate = VidExt_SetVideoModeWithRate;
+ptr_VidExt_SetCaption            CoreVideo_SetCaption = VidExt_SetCaption;
+ptr_VidExt_ToggleFullScreen      CoreVideo_ToggleFullScreen = VidExt_ToggleFullScreen;
+ptr_VidExt_ResizeWindow          CoreVideo_ResizeWindow = VidExt_ResizeWindow;
+ptr_VidExt_GL_GetProcAddress     CoreVideo_GL_GetProcAddress = VidExt_GL_GetProcAddress;
+ptr_VidExt_GL_SetAttribute       CoreVideo_GL_SetAttribute = VidExt_GL_SetAttribute;
+ptr_VidExt_GL_GetAttribute       CoreVideo_GL_GetAttribute = VidExt_GL_GetAttribute;
+ptr_VidExt_GL_SwapBuffers        CoreVideo_GL_SwapBuffers = VidExt_GL_SwapBuffers;
 
 extern size_t rdram_size;
 int PluginAPI::InitiateGFX(const GFX_INFO & _gfxInfo)
@@ -58,10 +65,10 @@ void _getWSPath(const char * _path, wchar_t * _strPath)
 	_cutLastPathSeparator(_strPath);
 }
 
-void getRetroArchDir(wchar_t * _strPath)
-{ 
-	const char* systemDir = NULL;
-	if (!environ_cb(RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY,&systemDir) || !systemDir || !*systemDir)
+static void getSystemDir(wchar_t * _strPath)
+{
+	const char* systemDir = tico_m64p_system_dir();
+	if (!systemDir || !*systemDir)
 		systemDir = "./";
 	std::string str(systemDir);
 	if (str.back() != '/' && str.back() != '\\')
@@ -71,12 +78,12 @@ void getRetroArchDir(wchar_t * _strPath)
 }
 void PluginAPI::GetUserDataPath(wchar_t * _strPath)
 {
-	getRetroArchDir(_strPath);
+	getSystemDir(_strPath);
 }
 
 void PluginAPI::GetUserCachePath(wchar_t * _strPath)
 {
-	getRetroArchDir(_strPath);
+	getSystemDir(_strPath);
 }
 
 void PluginAPI::FindPluginPath(wchar_t * _strPath)

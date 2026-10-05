@@ -3,8 +3,7 @@
 
 #include "vulkan_headers.hpp"
 
-#include <libretro.h>
-#include <libretro_vulkan.h>
+#include "tico_vulkan.h"
 #include <memory>
 #include <vector>
 
@@ -19,7 +18,7 @@ void deinit();
 void begin_frame();
 
 void process_commands();
-extern const struct retro_hw_render_interface_vulkan *vulkan;
+extern const struct tico_vk_interface *vulkan;
 
 extern unsigned width;
 extern unsigned height;

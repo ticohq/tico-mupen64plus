@@ -32,8 +32,8 @@ extern void plugin_connect_all();
 #ifdef __cplusplus
 extern "C" {
 #endif
-uint32_t get_retro_screen_width();
-uint32_t get_retro_screen_height();
+uint32_t m64p_screen_width();
+uint32_t m64p_screen_height();
 #ifdef __cplusplus
 }
 #endif

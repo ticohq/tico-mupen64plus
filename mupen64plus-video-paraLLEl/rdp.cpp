@@ -9,12 +9,11 @@
 using namespace Vulkan;
 using namespace std;
 
-extern retro_log_printf_t log_cb;
-extern retro_environment_t environ_cb;
+#include <mupen64plus-next_common.h>
 
 namespace RDP
 {
-const struct retro_hw_render_interface_vulkan *vulkan;
+const struct tico_vk_interface *vulkan;
 
 static int cmd_cur;
 static int cmd_ptr;
@@ -27,8 +26,8 @@ static unique_ptr<Device> device;
 static unique_ptr<Context> context;
 static QueryPoolHandle begin_ts, end_ts;
 
-static vector<retro_vulkan_image> retro_images;
-static vector<ImageHandle> retro_image_handles;
+static vector<tico_vk_image> frame_images;
+static vector<ImageHandle> frame_image_handles;
 unsigned width, height;
 unsigned overscan;
 unsigned upscaling = 1;
@@ -143,10 +142,10 @@ void process_commands()
 					std::chrono::steady_clock::now() - t0).count();
 				s_syncWaitTotalMs += ms;
 				if (ms >= 10)
-					log_cb(RETRO_LOG_WARN, "paraLLEl-RDP: SyncFull #%llu SLOW wait_for_timeline: %llu ms\n",
+					tico_m64p_log(TICO_LOG_WARN, "paraLLEl-RDP: SyncFull #%llu SLOW wait_for_timeline: %llu ms\n",
 					       (unsigned long long)n, (unsigned long long)ms);
 				if ((n % 600) == 0)
-					log_cb(RETRO_LOG_WARN, "paraLLEl-RDP: SyncFull stats: %llu waits, %llu ms total\n",
+					tico_m64p_log(TICO_LOG_WARN, "paraLLEl-RDP: SyncFull stats: %llu waits, %llu ms total\n",
 					       (unsigned long long)n, (unsigned long long)s_syncWaitTotalMs);
 			}
 			*gfx_info.MI_INTR_REG |= DP_INTERRUPT;
@@ -187,10 +186,10 @@ void begin_frame()
 		if (mask & (1u << i))
 			num_frames = i + 1;
 
-	if (num_frames != retro_images.size())
+	if (num_frames != frame_images.size())
 	{
-		retro_images.resize(num_frames);
-		retro_image_handles.resize(num_frames);
+		frame_images.resize(num_frames);
+		frame_image_handles.resize(num_frames);
 	}
 
 	vulkan->wait_sync_index(vulkan->handle);
@@ -218,13 +217,13 @@ bool init()
 		}
 	}
 
-	retro_images.resize(num_frames);
-	retro_image_handles.resize(num_frames);
+	frame_images.resize(num_frames);
+	frame_image_handles.resize(num_frames);
 
 	device.reset(new Device);
 	device->set_context(*context);
 	device->init_frame_contexts(num_sync_frames);
-	log_cb(RETRO_LOG_INFO, "Using %u sync frames for parallel-RDP.\n", num_sync_frames);
+	tico_m64p_log(TICO_LOG_INFO, "Using %u sync frames for parallel-RDP.\n", num_sync_frames);
 	device->set_queue_lock(
 			[]() { vulkan->lock_queue(vulkan->handle); },
 			[]() { vulkan->unlock_queue(vulkan->handle); });
@@ -240,13 +239,13 @@ bool init()
 		// Mupen64Plus allocates RDRAM on the heap, so this can be guaranteed to be 0.
 		if (offset)
 		{
-			log_cb(RETRO_LOG_ERROR, "Host RDRAM is not aligned properly! Make sure to use align RDRAM to 64 KiB!\n");
+			tico_m64p_log(TICO_LOG_ERROR, "Host RDRAM is not aligned properly! Make sure to use align RDRAM to 64 KiB!\n");
 			return false;
 		}
 		aligned_rdram -= offset;
 	}
 	else
-		log_cb(RETRO_LOG_WARN, "VK_EXT_external_memory_host is not supported by this device. Application might run slower because of this.\n");
+		tico_m64p_log(TICO_LOG_WARN, "VK_EXT_external_memory_host is not supported by this device. Application might run slower because of this.\n");
 
 	unsigned rdram_size = 8 * 1024 * 1024;
 	if (gfx_info.version >= 2 && gfx_info.RDRAM_SIZE)
@@ -254,7 +253,7 @@ bool init()
 
 	if (rdram_size == 0)
 	{
-		log_cb(RETRO_LOG_ERROR, "RDRAM size is 0, was graphics initialized too early?\n");
+		tico_m64p_log(TICO_LOG_ERROR, "RDRAM size is 0, was graphics initialized too early?\n");
 		return false;
 	}
 
@@ -263,17 +262,17 @@ bool init()
 	{
 		case 2:
 			flags |= COMMAND_PROCESSOR_FLAG_UPSCALING_2X_BIT;
-			log_cb(RETRO_LOG_INFO, "Using 2x upscaling!\n");
+			tico_m64p_log(TICO_LOG_INFO, "Using 2x upscaling!\n");
 			break;
 
 		case 4:
 			flags |= COMMAND_PROCESSOR_FLAG_UPSCALING_4X_BIT;
-			log_cb(RETRO_LOG_INFO, "Using 4x upscaling!\n");
+			tico_m64p_log(TICO_LOG_INFO, "Using 4x upscaling!\n");
 			break;
 
 		case 8:
 			flags |= COMMAND_PROCESSOR_FLAG_UPSCALING_8X_BIT;
-			log_cb(RETRO_LOG_INFO, "Using 8x upscaling!\n");
+			tico_m64p_log(TICO_LOG_INFO, "Using 8x upscaling!\n");
 			break;
 
 		default:
@@ -285,13 +284,13 @@ bool init()
 	if (super_sampled_dither)
 		flags |= COMMAND_PROCESSOR_FLAG_SUPER_SAMPLED_DITHER_BIT;
 
-	log_cb(RETRO_LOG_INFO, "paraLLEl-RDP: Using RDRAM size of %u bytes.\n", rdram_size);
+	tico_m64p_log(TICO_LOG_INFO, "paraLLEl-RDP: Using RDRAM size of %u bytes.\n", rdram_size);
 	frontend.reset(new CommandProcessor(*device, reinterpret_cast<void *>(aligned_rdram),
 				offset, rdram_size, rdram_size / 2, flags));
 
 	if (!frontend->device_is_supported())
 	{
-		log_cb(RETRO_LOG_ERROR, "This device probably does not support 8/16-bit storage. Make sure you're using up-to-date drivers!\n");
+		tico_m64p_log(TICO_LOG_ERROR, "This device probably does not support 8/16-bit storage. Make sure you're using up-to-date drivers!\n");
 		frontend.reset();
 		return false;
 	}
@@ -312,8 +311,8 @@ void deinit()
 {
 	begin_ts.reset();
 	end_ts.reset();
-	retro_image_handles.clear();
-	retro_images.clear();
+	frame_image_handles.clear();
+	frame_images.clear();
 	frontend.reset();
 	device.reset();
 	context.reset();
@@ -346,29 +345,29 @@ static void complete_frame_error()
 	auto image = device->create_image(info, &data);
 
 	unsigned index = vulkan->get_sync_index(vulkan->handle);
-	assert(index < retro_images.size());
+	assert(index < frame_images.size());
 
-	retro_images[index].image_view = image->get_view().get_view();
-	retro_images[index].image_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	frame_images[index].image_view = image->get_view().get_view();
+	frame_images[index].image_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
-	retro_images[index].create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-	retro_images[index].create_info.image = image->get_image();
-	retro_images[index].create_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
-	retro_images[index].create_info.format = VK_FORMAT_R8G8B8A8_UNORM;
-	retro_images[index].create_info.subresourceRange.baseMipLevel = 0;
-	retro_images[index].create_info.subresourceRange.baseArrayLayer = 0;
-	retro_images[index].create_info.subresourceRange.levelCount = 1;
-	retro_images[index].create_info.subresourceRange.layerCount = 1;
-	retro_images[index].create_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-	retro_images[index].create_info.components.r = VK_COMPONENT_SWIZZLE_R;
-	retro_images[index].create_info.components.g = VK_COMPONENT_SWIZZLE_G;
-	retro_images[index].create_info.components.b = VK_COMPONENT_SWIZZLE_B;
-	retro_images[index].create_info.components.a = VK_COMPONENT_SWIZZLE_A;
+	frame_images[index].create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+	frame_images[index].create_info.image = image->get_image();
+	frame_images[index].create_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+	frame_images[index].create_info.format = VK_FORMAT_R8G8B8A8_UNORM;
+	frame_images[index].create_info.subresourceRange.baseMipLevel = 0;
+	frame_images[index].create_info.subresourceRange.baseArrayLayer = 0;
+	frame_images[index].create_info.subresourceRange.levelCount = 1;
+	frame_images[index].create_info.subresourceRange.layerCount = 1;
+	frame_images[index].create_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	frame_images[index].create_info.components.r = VK_COMPONENT_SWIZZLE_R;
+	frame_images[index].create_info.components.g = VK_COMPONENT_SWIZZLE_G;
+	frame_images[index].create_info.components.b = VK_COMPONENT_SWIZZLE_B;
+	frame_images[index].create_info.components.a = VK_COMPONENT_SWIZZLE_A;
 
-	vulkan->set_image(vulkan->handle, &retro_images[index], 0, nullptr, VK_QUEUE_FAMILY_IGNORED);
+	vulkan->set_image(vulkan->handle, &frame_images[index]);
 	width = image->get_width();
 	height = image->get_height();
-	retro_image_handles[index] = image;
+	frame_image_handles[index] = image;
 
 	device->flush_frame();
 }
@@ -414,10 +413,10 @@ void complete_frame()
 	uint64_t scn = ++s_scanoutCount;
 	bool logScn = scn <= 8;
 	if (logScn)
-		log_cb(RETRO_LOG_INFO, "paraLLEl-RDP: complete_frame #%llu scanout ENTER\n", (unsigned long long)scn);
+		tico_m64p_log(TICO_LOG_INFO, "paraLLEl-RDP: complete_frame #%llu scanout ENTER\n", (unsigned long long)scn);
 	auto image = frontend->scanout(opts);
 	if (logScn)
-		log_cb(RETRO_LOG_INFO, "paraLLEl-RDP: complete_frame #%llu scanout EXIT (img=%d)\n",
+		tico_m64p_log(TICO_LOG_INFO, "paraLLEl-RDP: complete_frame #%llu scanout EXIT (img=%d)\n",
 		       (unsigned long long)scn, image ? 1 : 0);
 	unsigned index = vulkan->get_sync_index(vulkan->handle);
 
@@ -443,29 +442,29 @@ void complete_frame()
 		device->submit(cmd);
 	}
 
-	assert(index < retro_images.size());
+	assert(index < frame_images.size());
 
-	retro_images[index].image_view = image->get_view().get_view();
-	retro_images[index].image_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	frame_images[index].image_view = image->get_view().get_view();
+	frame_images[index].image_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
-	retro_images[index].create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-	retro_images[index].create_info.image = image->get_image();
-	retro_images[index].create_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
-	retro_images[index].create_info.format = VK_FORMAT_R8G8B8A8_UNORM;
-	retro_images[index].create_info.subresourceRange.baseMipLevel = 0;
-	retro_images[index].create_info.subresourceRange.baseArrayLayer = 0;
-	retro_images[index].create_info.subresourceRange.levelCount = 1;
-	retro_images[index].create_info.subresourceRange.layerCount = 1;
-	retro_images[index].create_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-	retro_images[index].create_info.components.r = VK_COMPONENT_SWIZZLE_R;
-	retro_images[index].create_info.components.g = VK_COMPONENT_SWIZZLE_G;
-	retro_images[index].create_info.components.b = VK_COMPONENT_SWIZZLE_B;
-	retro_images[index].create_info.components.a = VK_COMPONENT_SWIZZLE_A;
+	frame_images[index].create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+	frame_images[index].create_info.image = image->get_image();
+	frame_images[index].create_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+	frame_images[index].create_info.format = VK_FORMAT_R8G8B8A8_UNORM;
+	frame_images[index].create_info.subresourceRange.baseMipLevel = 0;
+	frame_images[index].create_info.subresourceRange.baseArrayLayer = 0;
+	frame_images[index].create_info.subresourceRange.levelCount = 1;
+	frame_images[index].create_info.subresourceRange.layerCount = 1;
+	frame_images[index].create_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	frame_images[index].create_info.components.r = VK_COMPONENT_SWIZZLE_R;
+	frame_images[index].create_info.components.g = VK_COMPONENT_SWIZZLE_G;
+	frame_images[index].create_info.components.b = VK_COMPONENT_SWIZZLE_B;
+	frame_images[index].create_info.components.a = VK_COMPONENT_SWIZZLE_A;
 
-	vulkan->set_image(vulkan->handle, &retro_images[index], 0, nullptr, VK_QUEUE_FAMILY_IGNORED);
+	vulkan->set_image(vulkan->handle, &frame_images[index]);
 	width = image->get_width();
 	height = image->get_height();
-	retro_image_handles[index] = image;
+	frame_image_handles[index] = image;
 
 	end_ts = device->write_calibrated_timestamp();
 	device->register_time_interval("Emulation", begin_ts, end_ts, "frame");
@@ -481,7 +480,7 @@ void complete_frame()
 }
 }
 
-bool parallel_create_device(struct retro_vulkan_context *frontend_context, VkInstance instance, VkPhysicalDevice gpu,
+bool parallel_create_device(struct tico_vk_context *frontend_context, VkInstance instance, VkPhysicalDevice gpu,
                             VkSurfaceKHR surface, PFN_vkGetInstanceProcAddr get_instance_proc_addr,
                             const char **required_device_extensions, unsigned num_required_device_extensions,
                             const char **required_device_layers, unsigned num_required_device_layers,
@@ -514,8 +513,6 @@ bool parallel_create_device(struct retro_vulkan_context *frontend_context, VkIns
 	frontend_context->device = ::RDP::context->get_device();
 	frontend_context->queue = ::RDP::context->get_queue_info().queues[Vulkan::QUEUE_INDEX_GRAPHICS];
 	frontend_context->queue_family_index = ::RDP::context->get_queue_info().family_indices[Vulkan::QUEUE_INDEX_GRAPHICS];
-	frontend_context->presentation_queue = ::RDP::context->get_queue_info().queues[Vulkan::QUEUE_INDEX_GRAPHICS];
-	frontend_context->presentation_queue_family_index = ::RDP::context->get_queue_info().family_indices[Vulkan::QUEUE_INDEX_GRAPHICS];
 
 	// Frontend owns the device.
 	::RDP::context->release_device();

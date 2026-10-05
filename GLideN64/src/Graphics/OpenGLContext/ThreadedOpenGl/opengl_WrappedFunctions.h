@@ -21,8 +21,6 @@
 #include <string.h> // memcpy
 
 #include <mupen64plus-next_common.h>
-#include <libco.h>
-extern "C" cothread_t retro_thread;
 
 #ifdef MUPENPLUSAPI
 #include <mupenplus/GLideN64_mupenplus.h>
@@ -30,9 +28,6 @@ extern "C" cothread_t retro_thread;
 #include <Graphics/OpenGLContext/windows/WindowsWGL.h>
 #endif
 
-#if defined(__LIBRETRO__) && !defined(NO_GL_WRAP)
-#include <glsm/glsm_state_ctl.h>
-#endif
 
 namespace opengl {
 
@@ -5051,9 +5046,7 @@ public:
 
 	void commandToExecute() override
 	{
-#ifndef __LIBRETRO__
 		::CoreVideo_Init();
-#endif
 	}
 
 private:
@@ -5082,9 +5075,7 @@ public:
 
 	void commandToExecute() override
 	{
-#ifndef __LIBRETRO__
 		::CoreVideo_Quit();
-#endif
 	}
 
 private:
@@ -5112,12 +5103,7 @@ public:
 
 	void commandToExecute() override
 	{
-#ifdef __LIBRETRO__
-		*m_returnValue = m64p_error::M64ERR_SUCCESS;
-		glsm_ctl(GLSM_CTL_STATE_CONTEXT_RESET, NULL);
-#else
 		*m_returnValue = ::CoreVideo_SetVideoMode(m_screenWidth, m_screenHeight, m_bitsPerPixel, m_mode, m_flags);
-#endif
 
 		initGLFunctions();
 	}
@@ -5161,12 +5147,7 @@ public:
 
 	void commandToExecute() override
 	{
-#ifdef __LIBRETRO__
-		*m_returnValue = m64p_error::M64ERR_SUCCESS;
-		glsm_ctl(GLSM_CTL_STATE_CONTEXT_RESET, NULL);
-#else
 		*m_returnValue = ::CoreVideo_SetVideoModeWithRate(m_screenWidth, m_screenHeight, m_refreshRate, m_bitsPerPixel, m_mode, m_flags);
-#endif
 
 		initGLFunctions();
 	}
@@ -5211,9 +5192,7 @@ public:
 
 	void commandToExecute() override
 	{
-#ifndef __LIBRETRO__
 		::CoreVideo_GL_SetAttribute(m_attribute, m_value);
-#endif
 	}
 
 private:
@@ -5245,9 +5224,7 @@ public:
 
 	void commandToExecute() override
 	{
-#ifndef __LIBRETRO__
 		::CoreVideo_GL_GetAttribute(m_attribute, m_value);
-#endif
 	}
 
 private:
@@ -5279,16 +5256,8 @@ public:
 
 	void commandToExecute() override
 	{
-#ifndef __LIBRETRO__
 		::CoreVideo_GL_SwapBuffers();
-#else
-		libretro_swap_buffer = true;
-		if(EnableThreadedRenderer)
-		{
-			co_switch(retro_thread);
-		}
 		m_swapBuffersCallback();
-#endif
 	}
 
 private:

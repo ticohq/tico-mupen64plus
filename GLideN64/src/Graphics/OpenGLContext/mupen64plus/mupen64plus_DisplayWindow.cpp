@@ -14,15 +14,14 @@
 #include <GLideNUI/GLideNUI.h>
 #include <DisplayWindow.h>
 
-#include <libretro_private.h>
 #include <mupen64plus-next_common.h>
 using namespace opengl;
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-uint32_t get_retro_screen_width();
-uint32_t get_retro_screen_height();
+uint32_t m64p_screen_width();
+uint32_t m64p_screen_height();
 #include <main/netplay.h>
 #ifdef __cplusplus
 }
@@ -71,14 +70,10 @@ bool DisplayWindowMupen64plus::_start()
 	_setAttributes();
 
 	m_bFullscreen = false;
-	m_screenWidth = get_retro_screen_width();
-	m_screenHeight = get_retro_screen_height();
+	m_screenWidth = m64p_screen_width();
+	m_screenHeight = m64p_screen_height();
 	_getDisplaySize();
 	_setBufferSize();
-
-#ifdef EGL
-	eglInitialize(eglGetDisplay(EGL_DEFAULT_DISPLAY), nullptr, nullptr);
-#endif // EGL
 
 	LOG(LOG_VERBOSE, "[GlideN64]: Create setting videomode %dx%d", m_screenWidth, m_screenHeight);
 	return true;
@@ -202,7 +197,9 @@ void DisplayWindowMupen64plus::_readScreen2(void * _dest, int * _width, int * _h
 #endif
 }
 
+// The frontend's framebuffer on the emulation thread's context; each swap
+// hands its contents to the frontend (tico_m64p_present_gl()).
 graphics::ObjectHandle DisplayWindowMupen64plus::_getDefaultFramebuffer()
 {
-	return graphics::ObjectHandle::null;
+	return graphics::ObjectHandle(tico_m64p_gl_default_framebuffer());
 }

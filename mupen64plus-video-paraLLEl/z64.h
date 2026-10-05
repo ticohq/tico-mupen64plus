@@ -4,7 +4,9 @@
 #include <stdio.h>
 #include <stdint.h>
 
-#include <retro_inline.h>
+#ifndef INLINE
+#define INLINE inline
+#endif
 
 #define SP_INTERRUPT          0x1
 #define SI_INTERRUPT          0x2

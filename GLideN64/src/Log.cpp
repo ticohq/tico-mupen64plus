@@ -118,7 +118,6 @@ void LogDebug(const char* _fileName, int _line, u16 _type, const char* _format, 
 #else // mupen64plus
 #include <mupen64plus-next_common.h>
 #include "mupenplus/GLideN64_mupenplus.h"
-extern retro_log_printf_t log_cb;
 
 void LogDebug(const char* _fileName, int _line, u16 _type, const char* _format, ...)
 {
@@ -155,8 +154,7 @@ void LogDebug(const char* _fileName, int _line, u16 _type, const char* _format, 
 	std::stringstream formatString;
 	formatString << _fileName << ":" << _line << ", \"" << zc.data() << "\"";
 
-	//CoreDebugCallback(CoreDebugCallbackContext, logLevel[_type], formatString.str().c_str());
-	log_cb(RETRO_LOG_INFO, formatString.str().c_str());
+	tico_m64p_log(TICO_LOG_INFO, "%s\n", formatString.str().c_str());
 }
 #endif
 

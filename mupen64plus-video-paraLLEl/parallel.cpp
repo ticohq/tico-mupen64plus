@@ -5,10 +5,10 @@
 #include "m64p_types.h"
 #include <stdlib.h>
 #include <string.h>
-#include <boolean.h>
+#include <stdbool.h>
+#include <mupen64plus-next_common.h>
 
 extern "C" {
-extern bool libretro_swap_buffer;
 
 void parallelChangeWindow(void)
 {
@@ -62,21 +62,13 @@ int parallelRomOpen(void)
 	return parallel_init();
 }
 
-#ifdef TICO_STANDALONE
-// Standalone present hook: with no retro_run pump, presentation happens right
-// here on the emulation thread when the N64 VI scans out — the same inversion
-// standalone m64p gfx plugins use (swap from UpdateScreen). Implemented by the
-// frontend (tico/TicoStandalone.cpp). FIFO vsync inside paces the emu thread.
-extern "C" void tico_standalone_present(unsigned width, unsigned height);
-#endif
-
+// Presentation happens right here on the emulation thread when the N64 VI
+// scans out, as standalone mupen64plus video plugins swap from UpdateScreen.
+// The frontend takes the frame (tico/m64p).
 void parallelUpdateScreen(void)
 {
 	RDP::complete_frame();
-	libretro_swap_buffer = true;
-#ifdef TICO_STANDALONE
-	tico_standalone_present(parallel_frame_width(), parallel_frame_height());
-#endif
+	tico_m64p_present_vulkan(parallel_frame_width(), parallel_frame_height());
 }
 
 void parallelShowCFB(void)
@@ -126,7 +118,7 @@ m64p_error parallelPluginGetVersion(m64p_plugin_type *PluginType, int *PluginVer
 	return M64ERR_SUCCESS;
 }
 
-void parallel_set_vulkan_interface(const struct retro_hw_render_interface_vulkan *vulkan)
+void parallel_set_vulkan_interface(const struct tico_vk_interface *vulkan)
 {
 	RDP::vulkan = vulkan;
 }
@@ -238,12 +230,4 @@ void parallel_set_overscan_crop(unsigned pixels)
 	RDP::overscan = pixels;
 }
 
-void parallel_get_geometry(struct retro_game_geometry *geom)
-{
-	geom->base_width = 640;
-	geom->base_height = 480;
-	geom->max_width = geom->base_width * RDP::upscaling;
-	geom->max_height = geom->base_height * RDP::upscaling;
-	geom->aspect_ratio = 4.0f / 3.0f;
-}
 }

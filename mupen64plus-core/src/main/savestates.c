@@ -68,7 +68,7 @@ static const unsigned char pj64_magic[4] = { 0xC8, 0xA6, 0xD8, 0x23 };
 static savestates_job job = savestates_job_nothing;
 static savestates_type type = savestates_type_unknown;
 
-// Libretro will re-use fname for the ptr
+// TICO_M64P re-uses fname for the frontend's state buffer
 // This avoids ifdef shenanigans
 static char *fname = NULL;
 
@@ -86,7 +86,7 @@ struct savestate_work {
     char *data;
     size_t size;
     struct work_struct work;
-#ifdef __LIBRETRO__
+#ifdef TICO_M64P
     void *mempointer;
 #endif
 };
@@ -167,23 +167,23 @@ savestates_job savestates_get_job(void)
 
 void savestates_set_job(savestates_job j, savestates_type t, const char *fn)
 {
-#ifndef __LIBRETRO__
+#ifndef TICO_M64P
     if (fname != NULL)
     {
         free(fname);
         fname = NULL;
     }
-#endif // __LIBRETRO__
+#endif // TICO_M64P
     job = j;
     type = t;
-#ifndef __LIBRETRO__
+#ifndef TICO_M64P
     if (fn != NULL)
         fname = strdup(fn);
 #else
     pthread_mutex_lock(&savestates_lock);
     fname = (char*)fn;
     pthread_mutex_unlock(&savestates_lock);
-#endif // __LIBRETRO__
+#endif // TICO_M64P
 }
 
 static void savestates_clear_job(void)
@@ -206,7 +206,7 @@ static void savestates_clear_job(void)
 #define PUTDATA(buff, type, value) \
     do { type x = value; PUTARRAY(&x, buff, type, 1); } while(0)
 
-#ifndef __LIBRETRO__
+#ifndef TICO_M64P
 int savestates_load_m64p(struct device* dev, char *filepath)
 #else
 int savestates_load_m64p(struct device* dev, const void *data)
@@ -231,7 +231,7 @@ int savestates_load_m64p(struct device* dev, const void *data)
     pthread_mutex_lock(&savestates_lock);
 #endif
 
-#ifndef __LIBRETRO__
+#ifndef TICO_M64P
     gzFile f;
     f = gzopen(filepath, "rb");
     if(f==NULL)
@@ -283,7 +283,7 @@ int savestates_load_m64p(struct device* dev, const void *data)
     if((version >> 16) != (savestate_latest_version >> 16))
     {
         main_message(M64MSG_STATUS, OSD_BOTTOM_LEFT, "State version (%08x) isn't compatible. Please update Mupen64Plus.", version);
-#ifndef __LIBRETRO__
+#ifndef TICO_M64P
         gzclose(f);
 #endif
 #ifdef USE_SDL
@@ -297,7 +297,7 @@ int savestates_load_m64p(struct device* dev, const void *data)
     if(memcmp((char *)curr, ROM_SETTINGS.MD5, 32))
     {
         main_message(M64MSG_STATUS, OSD_BOTTOM_LEFT, "State ROM MD5 does not match current ROM.");
-#ifndef __LIBRETRO__
+#ifndef TICO_M64P
         gzclose(f);
 #endif
 #ifdef USE_SDL
@@ -315,7 +315,7 @@ int savestates_load_m64p(struct device* dev, const void *data)
     if (savestateData == NULL)
     {
         main_message(M64MSG_STATUS, OSD_BOTTOM_LEFT, "Insufficient memory to load state.");
-#ifndef __LIBRETRO__
+#ifndef TICO_M64P
         gzclose(f);
 #endif
 #ifdef USE_SDL
@@ -327,7 +327,7 @@ int savestates_load_m64p(struct device* dev, const void *data)
     }
     if (version == 0x00010000) /* original savestate version */
     {
-#ifndef __LIBRETRO__
+#ifndef TICO_M64P
         if (gzread(f, savestateData, savestateSize) != savestateSize ||
             (gzread(f, queue, sizeof(queue)) % 4) != 0)
         {
@@ -346,7 +346,7 @@ int savestates_load_m64p(struct device* dev, const void *data)
     }
     else if (version == 0x00010100) // saves entire eventqueue plus 4-byte using_tlb flags
     {
-#ifndef __LIBRETRO__
+#ifndef TICO_M64P
         if (gzread(f, savestateData, savestateSize) != savestateSize ||
             gzread(f, queue, sizeof(queue)) != sizeof(queue) ||
             gzread(f, using_tlb_data, sizeof(using_tlb_data)) != sizeof(using_tlb_data))
@@ -367,7 +367,7 @@ int savestates_load_m64p(struct device* dev, const void *data)
     }
     else // version >= 0x00010200  saves entire eventqueue, 4-byte using_tlb flags and extra state
     {
-#ifndef __LIBRETRO__
+#ifndef TICO_M64P
         if (gzread(f, savestateData, savestateSize) != (int)savestateSize ||
             gzread(f, queue, sizeof(queue)) != sizeof(queue) ||
             gzread(f, using_tlb_data, sizeof(using_tlb_data)) != sizeof(using_tlb_data) ||
@@ -389,7 +389,7 @@ int savestates_load_m64p(struct device* dev, const void *data)
 #endif
     }
 
-#ifndef __LIBRETRO__
+#ifndef TICO_M64P
     gzclose(f);
 #endif
 #ifdef USE_SDL
@@ -1050,7 +1050,7 @@ int savestates_load_m64p(struct device* dev, const void *data)
 
     free(savestateData);
 
-#ifndef __LIBRETRO__
+#ifndef TICO_M64P
     main_message(M64MSG_STATUS, OSD_BOTTOM_LEFT, "State loaded from: %s", namefrompath(filepath));
 #endif
     return 1;
@@ -1500,7 +1500,7 @@ int savestates_load(void)
     int ret = 0;
     struct device* dev = &g_dev;
 
-#ifndef __LIBRETRO__
+#ifndef TICO_M64P
     FILE *fPtr = NULL;
     char *filepath = NULL;
 
@@ -1575,7 +1575,7 @@ int savestates_load(void)
     } else {
         ret = 0;
     }
-#endif // __LIBRETRO__
+#endif // TICO_M64P
 
     // deliver callback to indicate completion of state loading operation
     StateChanged(M64CORE_STATE_LOADCOMPLETE, ret);
@@ -1595,7 +1595,7 @@ static void savestates_save_m64p_work(struct work_struct *work)
     pthread_mutex_lock(&savestates_lock);
 #endif
 
-#ifndef __LIBRETRO__
+#ifndef TICO_M64P
     // Write the state to a GZIP file
     gzFile f;
     int gzres;
@@ -1625,7 +1625,7 @@ static void savestates_save_m64p_work(struct work_struct *work)
     memcpy(save->mempointer, save->data, save->size);
 #endif
     free(save->data);
-#ifndef __LIBRETRO__
+#ifndef TICO_M64P
     free(save->filepath);
 #endif
     free(save);
@@ -1638,7 +1638,7 @@ static void savestates_save_m64p_work(struct work_struct *work)
 #endif
 }
 
-#ifndef __LIBRETRO__
+#ifndef TICO_M64P
 int savestates_save_m64p(const struct device* dev, char *filepath)
 #else
 int savestates_save_m64p(const struct device* dev, void *data)
@@ -1662,7 +1662,7 @@ int savestates_save_m64p(const struct device* dev, void *data)
         return 0;
     }
 
-#ifndef __LIBRETRO__
+#ifndef TICO_M64P
     save->filepath = strdup(filepath);
 #else
     save->mempointer = data;
@@ -2294,7 +2294,7 @@ int savestates_save(void)
     int ret = 0;
     const struct device* dev = &g_dev;
 
-#ifndef __LIBRETRO__
+#ifndef TICO_M64P
     char *filepath;
 
     /* Can only save PJ64 savestates on VI / COMPARE interrupt.
@@ -2336,7 +2336,7 @@ int savestates_save(void)
 
     // deliver callback to indicate completion of state saving operation
     StateChanged(M64CORE_STATE_SAVECOMPLETE, ret);
-#endif // __LIBRETRO__
+#endif // TICO_M64P
 
     savestates_clear_job();
 

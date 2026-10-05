@@ -1,724 +1,405 @@
-DEBUG = 0
-FORCE_GLES ?= 0
-FORCE_GLES3 ?= 0
-LLE ?= 0
-HAVE_PARALLEL_RSP ?= 0
-HAVE_PARALLEL_RDP ?= 0
+# mupen64plus for the tico frontend, on Horizon (libnx). No libretro: the
+# frontend drives the core through its own API (tico/m64p/tico_m64p.h).
+# Builds libmupen64plus_tico.a; build_mupen64plus_nro.sh links the NRO.
+#
+#   make            Release
+#   make DEBUG=1    -O0 with debug info
+#   make clean
 
-SYSTEM_MINIZIP ?= 0
-SYSTEM_LIBPNG ?= 0
-SYSTEM_XXHASH ?= 0
-SYSTEM_ZLIB ?= 0
-
-HAVE_LTCG ?= 0
-DYNAFLAGS :=
-INCFLAGS  :=
-COREFLAGS :=
-CPUFLAGS  :=
-GLFLAGS   :=
-AWK       ?= awk
-STRINGS   ?= strings
-TR        ?= tr
-
-UNAME=$(shell uname -a)
-
-# Dirs
 ROOT_DIR := .
-LIBRETRO_DIR := $(ROOT_DIR)/libretro
-DEPSDIR	:=	$(CURDIR)/
+TARGET   := libmupen64plus_tico.a
+DEBUG    ?= 0
 
-ifeq ($(platform),)
-   platform = unix
-   ifeq ($(UNAME),)
-      platform = win
-   else ifneq ($(findstring MINGW,$(UNAME)),)
-      platform = win
-   else ifneq ($(findstring Darwin,$(UNAME)),)
-      platform = osx
-   else ifneq ($(findstring win,$(UNAME)),)
-      platform = win
-   endif
-else ifneq (,$(findstring armv,$(platform)))
-   override platform += unix
-endif
+include $(DEVKITPRO)/devkitA64/base_tools
+PORTLIBS := $(DEVKITPRO)/portlibs/switch
+LIBNX    ?= $(DEVKITPRO)/libnx
+STRINGS  := $(PREFIX)strings
+AWK      ?= awk
+TR       ?= tr
 
-# system platform
-system_platform = unix
-ifeq ($(shell uname -a),)
-   EXE_EXT = .exe
-   system_platform = win
-else ifneq ($(findstring Darwin,$(shell uname -a)),)
-   system_platform = osx
-   arch = intel
-ifeq ($(shell uname -p),powerpc)
-   arch = ppc
-endif
-else ifneq ($(findstring MINGW,$(shell uname -a)),)
-   system_platform = win
-endif
+CORE_DIR           := $(ROOT_DIR)/mupen64plus-core
+RSPDIR             := $(ROOT_DIR)/mupen64plus-rsp-hle
+RSPDIR_PARALLEL    := $(ROOT_DIR)/mupen64plus-rsp-paraLLEl
+VIDEODIR_GLIDEN64  := $(ROOT_DIR)/GLideN64
+VIDEODIR_PARALLEL  := $(ROOT_DIR)/mupen64plus-video-paraLLEl
+TICO_M64P_DIR      := $(ROOT_DIR)/tico/m64p
+MINIZIP_DIR        := $(CORE_DIR)/subprojects/minizip
+LIBPNG_DIR         := $(ROOT_DIR)/custom/dependencies/libpng
+XXHASH_DIR         := $(ROOT_DIR)/xxHash
+ZLIB_DIR           := $(ROOT_DIR)/custom/dependencies/libzlib
+AWK_DEST_DIR       := $(CORE_DIR)/src/asm_defines
+ASM_DEFINES_OBJ    := $(AWK_DEST_DIR)/asm_defines.o
 
-# Cross compile ?
+#------------------------------------------------------------------------------
+# Sources
+#------------------------------------------------------------------------------
 
-ifeq (,$(ARCH))
-   ARCH = $(shell uname -m)
-endif
+CORE_SOURCES_C := \
+	$(CORE_DIR)/src/asm_defines/asm_defines.c \
+	$(CORE_DIR)/src/api/callbacks.c \
+	$(ROOT_DIR)/custom/mupen64plus-core/api/config.c \
+	$(CORE_DIR)/src/api/debugger.c \
+	$(CORE_DIR)/src/api/frontend.c \
+	$(CORE_DIR)/src/backends/plugins_compat/audio_plugin_compat.c \
+	$(CORE_DIR)/src/backends/api/video_capture_backend.c \
+	$(CORE_DIR)/src/backends/plugins_compat/input_plugin_compat.c \
+	$(CORE_DIR)/src/backends/clock_ctime_plus_delta.c \
+	$(CORE_DIR)/src/backends/dummy_video_capture.c \
+	$(CORE_DIR)/src/backends/file_storage.c \
+	$(CORE_DIR)/src/device/cart/cart.c \
+	$(CORE_DIR)/src/device/cart/af_rtc.c \
+	$(CORE_DIR)/src/device/cart/cart_rom.c \
+	$(CORE_DIR)/src/device/cart/eeprom.c \
+	$(CORE_DIR)/src/device/cart/flashram.c \
+	$(CORE_DIR)/src/device/cart/is_viewer.c \
+	$(CORE_DIR)/src/device/cart/sram.c \
+	$(CORE_DIR)/src/device/controllers/game_controller.c \
+	$(CORE_DIR)/src/device/controllers/vru_controller.c \
+	$(CORE_DIR)/src/device/controllers/paks/biopak.c \
+	$(CORE_DIR)/src/device/controllers/paks/mempak.c \
+	$(CORE_DIR)/src/device/controllers/paks/rumblepak.c \
+	$(CORE_DIR)/src/device/controllers/paks/transferpak.c \
+	$(CORE_DIR)/src/device/dd/dd_controller.c \
+	$(CORE_DIR)/src/device/dd/disk.c \
+	$(CORE_DIR)/src/device/device.c \
+	$(CORE_DIR)/src/device/gb/gb_cart.c \
+	$(CORE_DIR)/src/device/gb/mbc3_rtc.c \
+	$(CORE_DIR)/src/device/gb/m64282fp.c \
+	$(CORE_DIR)/src/device/memory/memory.c \
+	$(CORE_DIR)/src/device/pif/bootrom_hle.c \
+	$(CORE_DIR)/src/device/pif/cic.c \
+	$(CORE_DIR)/src/device/pif/n64_cic_nus_6105.c \
+	$(CORE_DIR)/src/device/pif/pif.c \
+	$(CORE_DIR)/src/device/r4300/cached_interp.c \
+	$(CORE_DIR)/src/device/r4300/cp0.c \
+	$(CORE_DIR)/src/device/r4300/cp1.c \
+	$(CORE_DIR)/src/device/r4300/cp2.c \
+	$(CORE_DIR)/src/device/r4300/idec.c \
+	$(CORE_DIR)/src/device/r4300/interrupt.c \
+	$(CORE_DIR)/src/device/r4300/pure_interp.c \
+	$(CORE_DIR)/src/device/r4300/r4300_core.c \
+	$(CORE_DIR)/src/device/r4300/tlb.c \
+	$(CORE_DIR)/src/device/rcp/ai/ai_controller.c \
+	$(CORE_DIR)/src/device/rcp/mi/mi_controller.c \
+	$(CORE_DIR)/src/device/rcp/pi/pi_controller.c \
+	$(CORE_DIR)/src/device/rcp/rdp/fb.c \
+	$(CORE_DIR)/src/device/rcp/rdp/rdp_core.c \
+	$(CORE_DIR)/src/device/rcp/ri/ri_controller.c \
+	$(CORE_DIR)/src/device/rcp/rsp/rsp_core.c \
+	$(CORE_DIR)/src/device/rcp/si/si_controller.c \
+	$(CORE_DIR)/src/device/rcp/vi/vi_controller.c \
+	$(CORE_DIR)/src/device/rdram/rdram.c \
+	$(CORE_DIR)/src/main/main.c \
+	$(CORE_DIR)/src/main/util.c \
+	$(CORE_DIR)/src/main/cheat.c \
+	$(CORE_DIR)/src/main/rom.c \
+	$(CORE_DIR)/src/main/savestates.c \
+	$(CORE_DIR)/src/plugin/plugin.c \
+	$(CORE_DIR)/src/plugin/dummy_audio.c \
+	$(CORE_DIR)/src/plugin/dummy_input.c
 
-# Target Dynarec
-WITH_DYNAREC ?= $(ARCH)
+# the tico frontend's side of the core: options, emulation thread, states,
+# audio, input and the video extension
+TICO_M64P_SOURCES_C := \
+	$(TICO_M64P_DIR)/tico_m64p.c \
+	$(TICO_M64P_DIR)/audio_tico.c \
+	$(TICO_M64P_DIR)/input_tico.c \
+	$(TICO_M64P_DIR)/vidext_tico.c
 
-PIC = 1
-# on 32bit Haiku the output of "uname -m" is "BePC"
-ifeq ($(ARCH), $(filter $(ARCH), i386 i686 BePC))
-   WITH_DYNAREC = x86
-   PIC = 0
-else ifeq ($(ARCH), $(filter $(ARCH), arm))
-   WITH_DYNAREC = arm
-endif
+MINIZIP_SOURCES_C = \
+	$(MINIZIP_DIR)/zip.c \
+	$(MINIZIP_DIR)/unzip.c \
+	$(MINIZIP_DIR)/ioapi.c
 
-TARGET_NAME := mupen64plus_next
-CC_AS ?= $(CC)
-NASM  ?= nasm
+LIBPNG_SOURCES_C = \
+	$(LIBPNG_DIR)/png.c \
+	$(LIBPNG_DIR)/pngerror.c \
+	$(LIBPNG_DIR)/pngget.c \
+	$(LIBPNG_DIR)/pngmem.c \
+	$(LIBPNG_DIR)/pngpread.c \
+	$(LIBPNG_DIR)/pngread.c \
+	$(LIBPNG_DIR)/pngrio.c \
+	$(LIBPNG_DIR)/pngrtran.c \
+	$(LIBPNG_DIR)/pngrutil.c \
+	$(LIBPNG_DIR)/pngset.c \
+	$(LIBPNG_DIR)/pngtrans.c \
+	$(LIBPNG_DIR)/pngwio.c \
+	$(LIBPNG_DIR)/pngwrite.c \
+	$(LIBPNG_DIR)/pngwtran.c \
+	$(LIBPNG_DIR)/pngwutil.c
 
-GIT_VERSION ?= " $(shell git rev-parse --short HEAD || echo unknown)"
-ifneq ($(GIT_VERSION)," unknown")
-	COREFLAGS += -DGIT_VERSION=\"$(GIT_VERSION)\"
-endif
+ZLIB_SOURCES_C = \
+	$(ZLIB_DIR)/adler32.c \
+	$(ZLIB_DIR)/compress.c \
+	$(ZLIB_DIR)/crc32.c \
+	$(ZLIB_DIR)/deflate.c \
+	$(ZLIB_DIR)/gzclose.c \
+	$(ZLIB_DIR)/gzlib.c \
+	$(ZLIB_DIR)/gzread.c \
+	$(ZLIB_DIR)/gzwrite.c \
+	$(ZLIB_DIR)/infback.c \
+	$(ZLIB_DIR)/inffast.c \
+	$(ZLIB_DIR)/inflate.c \
+	$(ZLIB_DIR)/inftrees.c \
+	$(ZLIB_DIR)/trees.c \
+	$(ZLIB_DIR)/uncompr.c \
+	$(ZLIB_DIR)/zutil.c
 
-ifneq ($(CORE_NAME),)
-	COREFLAGS += -DCORE_NAME=\""$(CORE_NAME)"\"
-endif
+RSP_HLE_SOURCES_C := \
+	$(RSPDIR)/src/alist.c \
+	$(RSPDIR)/src/alist_audio.c \
+	$(RSPDIR)/src/alist_naudio.c \
+	$(RSPDIR)/src/alist_nead.c \
+	$(RSPDIR)/src/audio.c \
+	$(RSPDIR)/src/cicx105.c \
+	$(RSPDIR)/src/hle.c \
+	$(RSPDIR)/src/hvqm.c \
+	$(RSPDIR)/src/jpeg.c \
+	$(RSPDIR)/src/memory.c \
+	$(RSPDIR)/src/mp3.c \
+	$(RSPDIR)/src/musyx.c \
+	$(RSPDIR)/src/re2.c \
+	$(RSPDIR)/src/plugin.c
 
-# Linux
-ifneq (,$(findstring unix,$(platform)))
-   TARGET := $(TARGET_NAME)_libretro.so
-   LDFLAGS += -shared -Wl,--version-script=$(LIBRETRO_DIR)/link.T -Wl,--no-undefined
 
-   ifeq ($(FORCE_GLES),1)
-      GLES = 1
-      GL_LIB := -lGLESv2
-   else ifeq ($(FORCE_GLES3),1)
-      GLES3 = 1
-      GL_LIB := -lGLESv2
-   else
-      GL_LIB := -lGL
-   endif
+GLIDEN64_SOURCES_CXX := \
+	$(VIDEODIR_GLIDEN64)/src/Combiner.cpp                                                         \
+    $(VIDEODIR_GLIDEN64)/src/CombinerKey.cpp                                                      \
+    $(VIDEODIR_GLIDEN64)/src/CommonPluginAPI.cpp                                                  \
+    $(VIDEODIR_GLIDEN64)/src/Config.cpp                                                           \
+    $(VIDEODIR_GLIDEN64)/src/convert.cpp                                                          \
+    $(VIDEODIR_GLIDEN64)/src/DebugDump.cpp                                                        \
+    $(VIDEODIR_GLIDEN64)/src/Debugger.cpp                                                         \
+    $(VIDEODIR_GLIDEN64)/src/DepthBuffer.cpp                                                      \
+    $(VIDEODIR_GLIDEN64)/src/DisplayWindow.cpp                                                    \
+    $(VIDEODIR_GLIDEN64)/src/Graphics/OpenGLContext/mupen64plus/mupen64plus_DisplayWindow.cpp     \
+    $(VIDEODIR_GLIDEN64)/src/DisplayLoadProgress.cpp                                              \
+    $(VIDEODIR_GLIDEN64)/src/FrameBuffer.cpp                                                      \
+    $(VIDEODIR_GLIDEN64)/src/FrameBufferInfo.cpp                                                  \
+    $(VIDEODIR_GLIDEN64)/src/GBI.cpp                                                              \
+    $(VIDEODIR_GLIDEN64)/src/gDP.cpp                                                              \
+    $(VIDEODIR_GLIDEN64)/src/GLideN64.cpp                                                         \
+    $(VIDEODIR_GLIDEN64)/src/gSP.cpp                                                              \
+    $(VIDEODIR_GLIDEN64)/src/N64.cpp                                                              \
+    $(VIDEODIR_GLIDEN64)/src/TextDrawer.cpp                                                       \
+    $(VIDEODIR_GLIDEN64)/src/PaletteTexture.cpp                                                   \
+    $(VIDEODIR_GLIDEN64)/src/Performance.cpp                                                      \
+    $(VIDEODIR_GLIDEN64)/src/PostProcessor.cpp                                                    \
+    $(VIDEODIR_GLIDEN64)/src/RDP.cpp                                                              \
+    $(VIDEODIR_GLIDEN64)/src/RSP.cpp                                                              \
+    $(VIDEODIR_GLIDEN64)/src/SoftwareRender.cpp                                                   \
+    $(VIDEODIR_GLIDEN64)/src/TexrectDrawer.cpp                                                    \
+    $(VIDEODIR_GLIDEN64)/src/TextureFilterHandler.cpp                                             \
+    $(VIDEODIR_GLIDEN64)/src/Textures.cpp                                                         \
+    $(VIDEODIR_GLIDEN64)/src/VI.cpp                                                               \
+    $(VIDEODIR_GLIDEN64)/src/ZlutTexture.cpp                                                      \
+    $(VIDEODIR_GLIDEN64)/src/common/CommonAPIImpl_common.cpp                                      \
+    $(VIDEODIR_GLIDEN64)/src/DepthBufferRender/ClipPolygon.cpp                                    \
+    $(VIDEODIR_GLIDEN64)/src/DepthBufferRender/DepthBufferRender.cpp                              \
+    $(VIDEODIR_GLIDEN64)/src/BufferCopy/BlueNoiseTexture.cpp                                    \
+    $(VIDEODIR_GLIDEN64)/src/BufferCopy/ColorBufferToRDRAM.cpp                                    \
+    $(VIDEODIR_GLIDEN64)/src/BufferCopy/DepthBufferToRDRAM.cpp                                    \
+    $(VIDEODIR_GLIDEN64)/src/BufferCopy/RDRAMtoColorBuffer.cpp                                    \
+    $(VIDEODIR_GLIDEN64)/src/GraphicsDrawer.cpp                                                   \
+    $(VIDEODIR_GLIDEN64)/src/Graphics/Context.cpp                                                 \
+    $(VIDEODIR_GLIDEN64)/src/Graphics/ColorBufferReader.cpp                                       \
+    $(VIDEODIR_GLIDEN64)/src/Graphics/CombinerProgram.cpp                                         \
+    $(VIDEODIR_GLIDEN64)/src/Graphics/ObjectHandle.cpp                                            \
+    $(VIDEODIR_GLIDEN64)/src/Graphics/OpenGLContext/GLFunctions.cpp                               \
+    $(VIDEODIR_GLIDEN64)/src/Graphics/OpenGLContext/ThreadedOpenGl/opengl_Wrapper.cpp             \
+    $(VIDEODIR_GLIDEN64)/src/Graphics/OpenGLContext/ThreadedOpenGl/opengl_WrappedFunctions.cpp    \
+    $(VIDEODIR_GLIDEN64)/src/Graphics/OpenGLContext/ThreadedOpenGl/opengl_Command.cpp             \
+    $(VIDEODIR_GLIDEN64)/src/Graphics/OpenGLContext/ThreadedOpenGl/opengl_ObjectPool.cpp          \
+    $(VIDEODIR_GLIDEN64)/src/Graphics/OpenGLContext/ThreadedOpenGl/RingBufferPool.cpp             \
+    $(VIDEODIR_GLIDEN64)/src/Graphics/OpenGLContext/opengl_Attributes.cpp                         \
+    $(VIDEODIR_GLIDEN64)/src/Graphics/OpenGLContext/opengl_BufferedDrawer.cpp                     \
+    $(VIDEODIR_GLIDEN64)/src/Graphics/OpenGLContext/opengl_BufferManipulationObjectFactory.cpp    \
+    $(VIDEODIR_GLIDEN64)/src/Graphics/OpenGLContext/opengl_CachedFunctions.cpp                    \
+    $(VIDEODIR_GLIDEN64)/src/Graphics/OpenGLContext/opengl_ColorBufferReaderWithBufferStorage.cpp \
+    $(VIDEODIR_GLIDEN64)/src/Graphics/OpenGLContext/opengl_ColorBufferReaderWithPixelBuffer.cpp   \
+    $(VIDEODIR_GLIDEN64)/src/Graphics/OpenGLContext/opengl_ColorBufferReaderWithReadPixels.cpp    \
+    $(VIDEODIR_GLIDEN64)/src/Graphics/OpenGLContext/opengl_ColorBufferReaderWithEGLImage.cpp      \
+    $(VIDEODIR_GLIDEN64)/src/Graphics/OpenGLContext/opengl_ContextImpl.cpp                        \
+    $(VIDEODIR_GLIDEN64)/src/Graphics/OpenGLContext/opengl_GLInfo.cpp                             \
+    $(VIDEODIR_GLIDEN64)/src/Graphics/OpenGLContext/opengl_Parameters.cpp                         \
+    $(VIDEODIR_GLIDEN64)/src/Graphics/OpenGLContext/opengl_TextureManipulationObjectFactory.cpp   \
+    $(VIDEODIR_GLIDEN64)/src/Graphics/OpenGLContext/opengl_UnbufferedDrawer.cpp                   \
+    $(VIDEODIR_GLIDEN64)/src/Graphics/OpenGLContext/opengl_Utils.cpp                              \
+    $(VIDEODIR_GLIDEN64)/src/Graphics/OpenGLContext/GLSL/glsl_CombinerInputs.cpp                  \
+    $(VIDEODIR_GLIDEN64)/src/Graphics/OpenGLContext/GLSL/glsl_CombinerProgramBuilder.cpp          \
+    $(VIDEODIR_GLIDEN64)/src/Graphics/OpenGLContext/GLSL/glsl_CombinerProgramImpl.cpp             \
+    $(VIDEODIR_GLIDEN64)/src/Graphics/OpenGLContext/GLSL/glsl_CombinerProgramUniformFactory.cpp   \
+    $(VIDEODIR_GLIDEN64)/src/Graphics/OpenGLContext/GLSL/glsl_CombinerProgramUniformFactoryAccurate.cpp \
+    $(VIDEODIR_GLIDEN64)/src/Graphics/OpenGLContext/GLSL/glsl_CombinerProgramUniformFactoryFast.cpp     \
+    $(VIDEODIR_GLIDEN64)/src/Graphics/OpenGLContext/GLSL/glsl_CombinerProgramUniformFactoryCommon.cpp   \
+    $(VIDEODIR_GLIDEN64)/src/Graphics/OpenGLContext/GLSL/glsl_CombinerProgramBuilderCommon.cpp    \
+    $(VIDEODIR_GLIDEN64)/src/Graphics/OpenGLContext/GLSL/glsl_CombinerProgramBuilderAccurate.cpp  \
+    $(VIDEODIR_GLIDEN64)/src/Graphics/OpenGLContext/GLSL/glsl_CombinerProgramBuilderFast.cpp      \
+    $(VIDEODIR_GLIDEN64)/src/Graphics/OpenGLContext/GLSL/glsl_FXAA.cpp                            \
+    $(VIDEODIR_GLIDEN64)/src/Graphics/OpenGLContext/GLSL/glsl_ShaderStorage.cpp                   \
+    $(VIDEODIR_GLIDEN64)/src/Graphics/OpenGLContext/GLSL/glsl_SpecialShadersFactory.cpp           \
+    $(VIDEODIR_GLIDEN64)/src/Graphics/OpenGLContext/GLSL/glsl_Utils.cpp                           \
+    $(VIDEODIR_GLIDEN64)/src/Graphics/OpenGLContext/GraphicBuffer/PrivateApi/GraphicBuffer.cpp    \
+    $(VIDEODIR_GLIDEN64)/src/mupenplus/MemoryStatus_mupenplus.cpp                                 \
+    $(VIDEODIR_GLIDEN64)/src/uCodes/F3D.cpp                                                       \
+    $(VIDEODIR_GLIDEN64)/src/uCodes/F3DAM.cpp                                                     \
+    $(VIDEODIR_GLIDEN64)/src/uCodes/F3DBETA.cpp                                                   \
+    $(VIDEODIR_GLIDEN64)/src/uCodes/F3DDKR.cpp                                                    \
+    $(VIDEODIR_GLIDEN64)/src/uCodes/F3DEX.cpp                                                     \
+    $(VIDEODIR_GLIDEN64)/src/uCodes/F3DEX2.cpp                                                    \
+    $(VIDEODIR_GLIDEN64)/src/uCodes/F3DEX3.cpp                                                    \
+    $(VIDEODIR_GLIDEN64)/src/uCodes/F3DEX095.cpp                                                  \
+    $(VIDEODIR_GLIDEN64)/src/uCodes/F3DEX2ACCLAIM.cpp                                             \
+    $(VIDEODIR_GLIDEN64)/src/uCodes/F3DEX2CBFD.cpp                                                \
+    $(VIDEODIR_GLIDEN64)/src/uCodes/F3DZEX2.cpp                                                   \
+    $(VIDEODIR_GLIDEN64)/src/uCodes/F3DFLX2.cpp                                                   \
+    $(VIDEODIR_GLIDEN64)/src/uCodes/F3DGOLDEN.cpp                                                 \
+    $(VIDEODIR_GLIDEN64)/src/uCodes/F3DPD.cpp                                                     \
+    $(VIDEODIR_GLIDEN64)/src/uCodes/F3DSETA.cpp                                                   \
+    $(VIDEODIR_GLIDEN64)/src/uCodes/F5Indi_Naboo.cpp                                              \
+    $(VIDEODIR_GLIDEN64)/src/uCodes/F5Rogue.cpp                                                   \
+    $(VIDEODIR_GLIDEN64)/src/uCodes/F3DTEXA.cpp                                                   \
+    $(VIDEODIR_GLIDEN64)/src/uCodes/L3D.cpp                                                       \
+    $(VIDEODIR_GLIDEN64)/src/uCodes/L3DEX2.cpp                                                    \
+    $(VIDEODIR_GLIDEN64)/src/uCodes/L3DEX.cpp                                                     \
+    $(VIDEODIR_GLIDEN64)/src/uCodes/S2DEX2.cpp                                                    \
+    $(VIDEODIR_GLIDEN64)/src/uCodes/S2DEX.cpp                                                     \
+    $(VIDEODIR_GLIDEN64)/src/uCodes/T3DUX.cpp                                                     \
+    $(VIDEODIR_GLIDEN64)/src/uCodes/Turbo3D.cpp                                                   \
+    $(VIDEODIR_GLIDEN64)/src/uCodes/ZSort.cpp                                                     \
+    $(VIDEODIR_GLIDEN64)/src/uCodes/ZSortBOSS.cpp                                                 \
+	$(VIDEODIR_GLIDEN64)/src/MupenPlusPluginAPI.cpp                                               \
+	$(VIDEODIR_GLIDEN64)/src/mupenplus/MupenPlusAPIImpl.cpp                                       \
+	$(ROOT_DIR)/custom/GLideN64/mupenplus/Config_mupenplus.cpp                                    \
+	$(ROOT_DIR)/custom/GLideN64/mupenplus/CommonAPIImpl_mupenplus.cpp							  \
+	$(VIDEODIR_GLIDEN64)/src/Log.cpp
 
-   COREFLAGS += -DOS_LINUX
-   ifeq ($(ARCH), x86_64)
-      ASFLAGS = -f elf64 -d ELF_TYPE
-   else
-      ASFLAGS = -f elf -d ELF_TYPE
-   endif
+GLIDEN64_SOURCES_CXX += \
+	$(VIDEODIR_GLIDEN64)/src/GLideNHQ/TextureFilters.cpp \
+	$(VIDEODIR_GLIDEN64)/src/GLideNHQ/TextureFilters_2xsai.cpp \
+	$(VIDEODIR_GLIDEN64)/src/GLideNHQ/TextureFilters_hq2x.cpp \
+	$(VIDEODIR_GLIDEN64)/src/GLideNHQ/TextureFilters_hq4x.cpp \
+	$(VIDEODIR_GLIDEN64)/src/GLideNHQ/TextureFilters_xbrz.cpp \
+	$(VIDEODIR_GLIDEN64)/src/GLideNHQ/TxCache.cpp \
+	$(VIDEODIR_GLIDEN64)/src/GLideNHQ/TxDbg.cpp \
+	$(VIDEODIR_GLIDEN64)/src/GLideNHQ/TxFilter.cpp \
+	$(VIDEODIR_GLIDEN64)/src/GLideNHQ/TxFilterExport.cpp \
+	$(VIDEODIR_GLIDEN64)/src/GLideNHQ/TxHiResCache.cpp \
+	$(VIDEODIR_GLIDEN64)/src/GLideNHQ/TxHiResNoCache.cpp \
+	$(VIDEODIR_GLIDEN64)/src/GLideNHQ/TxHiResLoader.cpp \
+	$(VIDEODIR_GLIDEN64)/src/GLideNHQ/TxImage.cpp \
+	$(VIDEODIR_GLIDEN64)/src/GLideNHQ/TxQuantize.cpp \
+	$(VIDEODIR_GLIDEN64)/src/GLideNHQ/TxReSample.cpp \
+	$(VIDEODIR_GLIDEN64)/src/GLideNHQ/TxTexCache.cpp \
+	$(VIDEODIR_GLIDEN64)/src/GLideNHQ/TxUtil.cpp \
+	$(VIDEODIR_GLIDEN64)/src/RSP_LoadMatrix.cpp
 
-   ifneq (,$(findstring armv,$(platform)))
-      ARCH = arm
-      WITH_DYNAREC = arm
-      CPUFLAGS += -DARM -marm
-      ifneq (,$(findstring cortexa8,$(platform)))
-         CPUFLAGS += -mcpu=cortex-a8
-      else ifneq (,$(findstring cortexa9,$(platform)))
-         CPUFLAGS += -mcpu=cortex-a9
-      else
-         CPUFLAGS += -mcpu=cortex-a7
-      endif
-      ifneq (,$(findstring neon,$(platform)))
-          CPUFLAGS += -mfpu=neon
-          HAVE_NEON = 1
-      endif
-      ifneq (,$(findstring softfloat,$(platform)))
-          CPUFLAGS += -mfloat-abi=softfp
-      else ifneq (,$(findstring hardfloat,$(platform)))
-          CPUFLAGS += -mfloat-abi=hard
-      endif
-   endif
+GLIDEN64_SOURCES_CXX += $(VIDEODIR_GLIDEN64)/src/CRC32_ARMV8.cpp $(VIDEODIR_GLIDEN64)/src/3DMath.cpp
+GLIDEN64_SOURCES_C := $(VIDEODIR_GLIDEN64)/src/osal/osal_files_unix.c
 
-# Raspberry Pi
-else ifneq (,$(findstring rpi,$(platform)))
-   TARGET := $(TARGET_NAME)_libretro.so
-   LDFLAGS += -shared -Wl,--version-script=$(LIBRETRO_DIR)/link.T -Wl,--no-undefined -ldl
-   ifeq ($(FORCE_GLES3),1)
-      GLES3 = 1
-   else
-      GLES = 1
-   endif
-   ifneq (,$(findstring mesa,$(platform)))
-      MESA = 1
-   endif
-   ifneq (,$(findstring rpi4,$(platform)))
-      GLES3 = 1
-      MESA = 1
-   endif
-   ifeq ($(MESA), 1)
-      GL_LIB := -lGLESv2
-   else
-      LLE = 0
-      COREFLAGS += -DVC -DGL_USE_DLSYM
-      GL_LIB := -L/opt/vc/lib -lbrcmGLESv2
-      EGL_LIB := -lbrcmEGL
-      INCFLAGS += -I/opt/vc/include -I/opt/vc/include/interface/vcos -I/opt/vc/include/interface/vcos/pthreads
-   endif
-   HAVE_NEON = 1
-   ifneq (,$(findstring rpi2,$(platform)))
-      CPUFLAGS += -mcpu=cortex-a7
-      ARM_CPUFLAGS = -mfpu=neon-vfpv4
-   else ifneq (,$(findstring rpi3,$(platform)))
-      ifneq (,$(findstring rpi3_64,$(platform)))
-         CPUFLAGS += -mcpu=cortex-a53 -mtune=cortex-a53
-      else
-         CPUFLAGS += -march=armv8-a+crc -mtune=cortex-a53
-         ARM_CPUFLAGS = -mfpu=neon-fp-armv8
-      endif
-   else ifneq (,$(findstring rpi4,$(platform)))
-      ifneq (,$(findstring rpi4_64,$(platform)))
-         CPUFLAGS += -mcpu=cortex-a72 -mtune=cortex-a72
-      else
-         CPUFLAGS += -march=armv8-a+crc -mtune=cortex-a72
-         ARM_CPUFLAGS = -mfpu=neon-fp-armv8
-      endif
-   else ifneq (,$(findstring rpi5,$(platform)))
-      ifneq (,$(findstring rpi5_64,$(platform)))
-         CPUFLAGS += -mcpu=cortex-a76 -mtune=cortex-a76
-      else
-         CPUFLAGS += -march=armv8-a+crc+crypto -mtune=cortex-a76
-         ARM_CPUFLAGS = -mfpu=neon-fp-armv8
-      endif
-      HAVE_PARALLEL_RSP = 1
-      HAVE_THR_AL = 1
-      LLE = 1
-   else ifneq (,$(findstring rpi,$(platform)))
-      CPUFLAGS += -mcpu=arm1176jzf-s
-      ARM_CPUFLAGS = -mfpu=vfp
-      HAVE_NEON = 0
-   endif
-   ifeq ($(ARCH), aarch64)
-      WITH_DYNAREC=aarch64
-      HAVE_NEON = 0
-   else
-      WITH_DYNAREC=arm
-      CPUFLAGS += $(ARM_CPUFLAGS) -mfloat-abi=hard
-   endif
-   COREFLAGS += -DOS_LINUX
-   ASFLAGS = -f elf -d ELF_TYPE
+PARALLEL_RDP_IMPLEMENTATION := $(VIDEODIR_PARALLEL)/parallel-rdp
+include $(PARALLEL_RDP_IMPLEMENTATION)/config.mk
 
-# Nintendo Switch
-else ifeq ($(platform), libnx)
-   include $(DEVKITPRO)/devkitA64/base_tools
-   PORTLIBS := $(PORTLIBS_PATH)/switch
-   PATH := $(PORTLIBS)/bin:$(PATH)
-   LIBNX ?= $(DEVKITPRO)/libnx
-   STRINGS := $(PREFIX)$(STRINGS)
-   EGL := 1
-   PIC = 1
-   TARGET := $(TARGET_NAME)_libretro_$(platform).a
-   CPUOPTS := -g -march=armv8-a+crc -mtune=cortex-a57 -mtp=soft -mcpu=cortex-a57+crc+fp+simd
-   PLATCFLAGS = -O3 -ffast-math -funsafe-math-optimizations -fPIE -I$(PORTLIBS)/include/ -I$(PORTLIBS)/include/freetype2 -I$(LIBNX)/include/ -ffunction-sections -fdata-sections -ftls-model=local-exec -specs=$(LIBNX)/switch.specs
-   PLATCFLAGS += $(INCLUDE) -D__SWITCH__=1 -DSWITCH -DHAVE_LIBNX -D_GLIBCXX_USE_C99_MATH_TR1 -D_LDBL_EQ_DBL -funroll-loops #-DM64P_NETPLAY
-   # emit .d files so header edits rebuild their users (see -include below)
-   PLATCFLAGS += -MMD -MP
-   CXXFLAGS += -fno-rtti -std=gnu++14
-   COREFLAGS += -DOS_LINUX -DEGL -DVK_USE_PLATFORM_VI_NN
-   GLES = 0
-   WITH_DYNAREC = aarch64
-   HAVE_PARALLEL_RSP = 1
-   HAVE_PARALLEL_RDP = 1
-   LLE = 1
-   STATIC_LINKING = 1
+PARALLEL_RSP_SOURCES_CXX := \
+	$(RSPDIR_PARALLEL)/parallel.cpp \
+	$(RSPDIR_PARALLEL)/rsp_disasm.cpp \
+	$(RSPDIR_PARALLEL)/jit_allocator.cpp \
+	$(RSPDIR_PARALLEL)/rsp_jit.cpp \
+	$(wildcard $(RSPDIR_PARALLEL)/rsp/*.cpp) \
+	$(wildcard $(RSPDIR_PARALLEL)/arch/simd/rsp/*.cpp)
+PARALLEL_RSP_SOURCES_C := \
+	$(RSPDIR_PARALLEL)/lightning/lib/jit_disasm.c \
+	$(RSPDIR_PARALLEL)/lightning/lib/jit_memory.c \
+	$(RSPDIR_PARALLEL)/lightning/lib/jit_names.c \
+	$(RSPDIR_PARALLEL)/lightning/lib/jit_note.c \
+	$(RSPDIR_PARALLEL)/lightning/lib/jit_print.c \
+	$(RSPDIR_PARALLEL)/lightning/lib/jit_size.c \
+	$(RSPDIR_PARALLEL)/lightning/lib/lightning.c
 
-# Jetson Xavier NX
-else ifeq ($(platform), jetson-xavier)
-   TARGET := $(TARGET_NAME)_libretro.so
-   LDFLAGS += -shared -Wl,--version-script=$(LIBRETRO_DIR)/link.T -Wl,--no-undefined
-   GL_LIB := -lGL
-   CPUOPTS := -march=armv8.2-a+crc -mtune=cortex-a75 -mcpu=cortex-a75+crc+fp+simd
-   PLATCFLAGS = -O3 -ffast-math -funsafe-math-optimizations
-   CXXFLAGS += -std=gnu++11
-   COREFLAGS += -DOS_LINUX
-   WITH_DYNAREC = aarch64
-   HAVE_PARALLEL_RSP = 1
-   HAVE_PARALLEL_RDP = 1
-   HAVE_THR_AL = 1
-   LLE = 1
-   COREFLAGS += -ftree-vectorize -ftree-vectorizer-verbose=2 -funsafe-math-optimizations -fno-finite-math-only
+DYNAREC_SOURCES_C   := $(CORE_DIR)/src/device/r4300/new_dynarec/new_dynarec.c
+DYNAREC_SOURCES_ASM := $(CORE_DIR)/src/device/r4300/new_dynarec/arm64/linkage_arm64.S
 
-# 64 bit ODROIDs
-else ifneq (,$(findstring odroid64,$(platform)))
-   TARGET := $(TARGET_NAME)_libretro.so
-   LDFLAGS += -shared -Wl,--version-script=$(LIBRETRO_DIR)/link.T -Wl,--no-undefined
-   BOARD ?= $(shell cat /proc/cpuinfo | grep -i odroid | awk '{print $$3}')
-   GLES = 1
-   GL_LIB := -lGLESv2
-   WITH_DYNAREC := aarch64
-   ifneq (,$(findstring C2,$(BOARD)))
-      # ODROID-C2
-      CPUFLAGS += -mcpu=cortex-a53
-   else ifneq (,$(findstring C4,$(BOARD)))
-      # ODROID-C4
-      CPUFLAGS += -mcpu=cortex-a55
-      GLES3 = 1
-   else ifneq (,$(findstring N1,$(BOARD)))
-      # ODROID-N1
-      CPUFLAGS += -mcpu=cortex-a72.cortex-a53
-   else ifneq (,$(findstring N2,$(BOARD)))
-      # ODROID-N2
-      CPUFLAGS += -mcpu=cortex-a73.cortex-a53
-      GLES = 0
-      GLES3= 1
-      GL_LIB := -lGLESv3
-   endif
+SOURCES_C := $(CORE_SOURCES_C) $(TICO_M64P_SOURCES_C) $(CORE_DIR)/subprojects/md5/md5.c \
+	$(MINIZIP_SOURCES_C) $(LIBPNG_SOURCES_C) $(ZLIB_SOURCES_C) $(RSP_HLE_SOURCES_C) \
+	$(GLIDEN64_SOURCES_C) $(PARALLEL_RDP_SOURCES_C) $(PARALLEL_RSP_SOURCES_C) $(DYNAREC_SOURCES_C)
+SOURCES_CXX := $(GLIDEN64_SOURCES_CXX) $(PARALLEL_RDP_SOURCES_CXX) \
+	$(VIDEODIR_PARALLEL)/parallel.cpp $(VIDEODIR_PARALLEL)/rdp.cpp $(PARALLEL_RSP_SOURCES_CXX)
+SOURCES_ASM := $(DYNAREC_SOURCES_ASM)
 
-   COREFLAGS += -DOS_LINUX
-   ASFLAGS = -f elf -d ELF_TYPE
+OBJECTS := $(SOURCES_CXX:.cpp=.o) $(SOURCES_C:.c=.o) $(SOURCES_ASM:.S=.o)
 
-# ODROIDs
-else ifneq (,$(findstring odroid,$(platform)))
-   TARGET := $(TARGET_NAME)_libretro.so
-   LDFLAGS += -shared -Wl,--version-script=$(LIBRETRO_DIR)/link.T -Wl,--no-undefined
-   BOARD ?= $(shell cat /proc/cpuinfo | grep -i odroid | awk '{print $$3}')
-   GLES = 1
-   GL_LIB := -lGLESv2
-   CPUFLAGS += -marm -mfloat-abi=hard
-   HAVE_NEON = 1
-   WITH_DYNAREC=arm
-   ifneq (,$(findstring ODROIDC,$(BOARD)))
-      # ODROID-C1
-      CPUFLAGS += -mcpu=cortex-a5 -mfpu=neon
-   else ifneq (,$(findstring ODROID-XU,$(BOARD)))
-      # ODROID-XU3 & -XU3 Lite and -XU4
-      ifeq "$(shell expr `gcc -dumpversion` \>= 4.9)" "1"
-         CPUFLAGS += -mcpu=cortex-a15 -mtune=cortex-a15.cortex-a7 -mfpu=neon-vfpv4 -mvectorize-with-neon-quad
-      else
-         CPUFLAGS += -mcpu=cortex-a9 -mfpu=neon
-      endif
-      # ODROIDGOA
-   else ifneq (,$(findstring ODROIDGOA,$(BOARD)))
-      CPUFLAGS += -march=armv8-a+crc -mfpu=neon-fp-armv8 -mcpu=cortex-a35 -mtune=cortex-a35
-   else
-      # ODROID-U2, -U3, -X & -X2
-      CPUFLAGS += -mcpu=cortex-a9 -mfpu=neon
-   endif
+#------------------------------------------------------------------------------
+# Flags
+#------------------------------------------------------------------------------
 
-   COREFLAGS += -DOS_LINUX
-   ASFLAGS = -f elf -d ELF_TYPE
+INCFLAGS := \
+	-I$(ROOT_DIR)/custom \
+	-I$(ROOT_DIR)/custom/mupen64plus-core \
+	-I$(ROOT_DIR)/custom/GLideN64 \
+	-I$(VIDEODIR_GLIDEN64)/src \
+	-I$(VIDEODIR_GLIDEN64)/src/osal \
+	-I$(VIDEODIR_GLIDEN64)/src/inc \
+	-I$(CORE_DIR)/src \
+	-I$(CORE_DIR)/src/api \
+	-I$(CORE_DIR)/subprojects/md5 \
+	-I$(MINIZIP_DIR) -I$(LIBPNG_DIR) -I$(XXHASH_DIR) -I$(ZLIB_DIR) \
+	-I$(RSPDIR_PARALLEL)/arch/simd/rsp -I$(RSPDIR_PARALLEL)/lightning/include \
+	-I$(ROOT_DIR)/switch \
+	$(PARALLEL_RDP_INCLUDE_DIRS) \
+	-I$(PORTLIBS)/include -I$(LIBNX)/include
 
-# Amlogic S905/S905X/S912 (AMLGXBB/AMLGXL/AMLGXM) e.g. Khadas VIM1/2 / S905X2 (AMLG12A) & S922X/A311D (AMLG12B) e.g. Khadas VIM3 - 32-bit userspace
-else ifneq (,$(findstring AMLG,$(platform)))
-   TARGET := $(TARGET_NAME)_libretro.so
-   LDFLAGS += -shared -Wl,--version-script=$(LIBRETRO_DIR)/link.T -Wl,--no-undefined -ldl
-   CPUFLAGS += -march=armv8-a+crc -mfloat-abi=hard -mfpu=neon-fp-armv8
+DEFINES := -D__SWITCH__=1 -DSWITCH -DHAVE_LIBNX -DOS_LINUX -DEGL -DVK_USE_PLATFORM_VI_NN \
+	-DTICO_M64P -DM64P_PLUGIN_API -DM64P_CORE_PROTOTYPES -DMUPENPLUSAPI \
+	-D__STDC_CONSTANT_MACROS -D__STDC_LIMIT_MACROS -DUSE_FILE32API -D_ENDUSER_RELEASE \
+	-DTXFILTER_LIB -D__VEC4_OPT -D_GLIBCXX_USE_C99_MATH_TR1 -D_LDBL_EQ_DBL -DCORE \
+	-DHAVE_OPENGL -DHAVE_PARALLEL_RDP -DHAVE_PARALLEL_RSP -DPARALLEL_INTEGRATION \
+	-DNEW_DYNAREC=4 -DDYNAREC -I$(AWK_DEST_DIR)/
 
-   ifneq (,$(findstring AMLG12,$(platform)))
-      ifneq (,$(findstring AMLG12B,$(platform)))
-         CPUFLAGS += -mtune=cortex-a73.cortex-a53
-      else
-         CPUFLAGS += -mtune=cortex-a53
-      endif
-      GLES3 = 1
-   else ifneq (,$(findstring AMLGX,$(platform)))
-      CPUFLAGS += -mtune=cortex-a53
-      ifneq (,$(findstring AMLGXM,$(platform)))
-         GLES3 = 1
-      else
-         GLES = 1
-      endif
-   endif
-
-   ifneq (,$(findstring mesa,$(platform)))
-      COREFLAGS += -DEGL_NO_X11
-   endif
-
-   ifneq (,$(findstring mali,$(platform)))
-      GL_LIB := -lGLESv3
-   else
-      GL_LIB := -lGLESv2
-   endif
-  
-   HAVE_NEON = 1
-   WITH_DYNAREC=arm
-   COREFLAGS += -DUSE_GENERIC_GLESV2 -DOS_LINUX
-   ASFLAGS = -f elf -d ELF_TYPE
-
-# Amlogic S905/S912
-else ifneq (,$(findstring amlogic,$(platform)))
-   TARGET := $(TARGET_NAME)_libretro.so
-   LDFLAGS += -shared -Wl,--version-script=$(LIBRETRO_DIR)/link.T -Wl,--no-undefined -ldl
-   GLES = 1
-   GL_LIB := -lGLESv2
-   CPUFLAGS += -marm -mfloat-abi=hard -mfpu=neon
-   HAVE_NEON = 1
-   WITH_DYNAREC=arm
-   COREFLAGS += -DUSE_GENERIC_GLESV2 -DOS_LINUX
-   CPUFLAGS += -march=armv8-a -mcpu=cortex-a53 -mtune=cortex-a53
-
-# Generic AArch64 Cortex-A53 GLES 2.0 target
-else ifneq (,$(findstring arm64_cortex_a53_gles2,$(platform)))
-   TARGET := $(TARGET_NAME)_libretro.so
-   LDFLAGS += -shared -Wl,--version-script=$(LIBRETRO_DIR)/link.T -Wl,--no-undefined -ldl
-   GL_LIB := -lGLESv2
-   WITH_DYNAREC := aarch64
-   CPUFLAGS += -mcpu=cortex-a53 -mtune=cortex-a53
-   GLES = 1
-   COREFLAGS += -DOS_LINUX
-   ASFLAGS = -f elf64 -d ELF_TYPE
-
-# Generic AArch64 Cortex-A53 GLES 3.0 target
-else ifneq (,$(findstring arm64_cortex_a53_gles3,$(platform)))
-   TARGET := $(TARGET_NAME)_libretro.so
-   LDFLAGS += -shared -Wl,--version-script=$(LIBRETRO_DIR)/link.T -Wl,--no-undefined -ldl
-   GL_LIB := -lGLESv2
-   WITH_DYNAREC := aarch64
-   CPUFLAGS += -mcpu=cortex-a53 -mtune=cortex-a53
-   GLES3 = 1
-   COREFLAGS += -DOS_LINUX
-   ASFLAGS = -f elf64 -d ELF_TYPE
-
-# Rockchip RK3288 e.g. Asus Tinker Board / RK3328 e.g. PINE64 Rock64 / RK3399 e.g. PINE64 RockPro64 - 32-bit userspace
-else ifneq (,$(findstring RK,$(platform)))
-   TARGET := $(TARGET_NAME)_libretro.so
-   LDFLAGS += -shared -Wl,--version-script=$(LIBRETRO_DIR)/link.T -Wl,--no-undefined -ldl
-
-   ifneq (,$(findstring RK33,$(platform)))
-      CPUFLAGS += -march=armv8-a+crc -mfloat-abi=hard -mfpu=neon-fp-armv8
-      ifneq (,$(findstring RK3399,$(platform)))
-         CPUFLAGS += -mtune=cortex-a72.cortex-a53
-         GLES3 = 1
-      else ifneq (,$(findstring RK3328,$(platform)))
-         CPUFLAGS += -mtune=cortex-a53
-         GLES = 1
-      endif
-   else ifneq (,$(findstring RK3288,$(platform)))
-      CPUFLAGS += -march=armv7ve -mtune=cortex-a17 -mfloat-abi=hard -mfpu=neon-vfpv4
-      GLES3 = 1
-   endif
-
-   ifneq (,$(findstring mesa,$(platform)))
-      COREFLAGS += -DEGL_NO_X11
-   endif
-
-   GL_LIB := -lGLESv2
-   HAVE_NEON = 1
-   WITH_DYNAREC=arm
-   COREFLAGS += -DUSE_GENERIC_GLESV2 -DOS_LINUX
-   ASFLAGS = -f elf -d ELF_TYPE
-
-# OS X
-else ifneq (,$(findstring osx,$(platform)))
-   TARGET := $(TARGET_NAME)_libretro.dylib
-   LDFLAGS += -dynamiclib
-   OSXVER = `sw_vers -productVersion | cut -d. -f 2`
-   OSX_LT_MAVERICKS = `(( $(OSXVER) <= 9)) && echo "YES"`
-        LDFLAGS += -mmacosx-version-min=10.7
-   LDFLAGS += -stdlib=libc++
-
-   PLATCFLAGS += -D__MACOSX__ -DOSX -DOS_MAC_OS_X -DHAVE_UNISTD_H=1 -DHAVE_POSIX_MEMALIGN -DNO_ASM -DGL_SILENCE_DEPRECATION=1
-   GL_LIB := -framework OpenGL
-   LDFLAGS += -framework AudioToolbox
-
-   # Target Dynarec
-   WITH_DYNAREC =
-
-   HAVE_PARALLEL_RSP = 1
-   HAVE_PARALLEL_RDP = 1
-   HAVE_THR_AL = 1
-   LLE = 1
-
-   COREFLAGS += -DOS_LINUX
-   ASFLAGS = -f elf -d ELF_TYPE
-
-   ifeq ($(CROSS_COMPILE),1)
-      TARGET_RULE   = -target $(LIBRETRO_APPLE_PLATFORM) -isysroot $(LIBRETRO_APPLE_ISYSROOT)
-      CFLAGS   += $(TARGET_RULE)
-      CPPFLAGS += $(TARGET_RULE)
-      CXXFLAGS += $(TARGET_RULE)
-      LDFLAGS  += $(TARGET_RULE)
-   endif
-# iOS
-else ifneq (,$(findstring ios,$(platform)))
-   ifeq ($(IOSSDK),)
-      IOSSDK := $(shell xcodebuild -version -sdk iphoneos Path)
-   endif
-
-   TARGET := $(TARGET_NAME)_libretro_ios.dylib
-   DEFINES += -DIOS
-   GLES = 1
-	ifeq ($(platform),ios-arm64)
-		HAVE_PARALLEL_RSP = 1
-		HAVE_PARALLEL_RDP = 1
-		HAVE_THR_AL = 1
-		LLE = 1
-		WITH_DYNAREC=
-		GLES=1
-		GLES3=1
-		FORCE_GLES3=1
-		EGL := 0
-		HAVE_PARALLEL_RDP = 1
-		PLATCFLAGS += -DHAVE_POSIX_MEMALIGN -DIOS -DOS_IOS
-		PLATCFLAGS += -Ofast -ffast-math -funsafe-math-optimizations -DNO_ASM
-		COREFLAGS  += -Ofast -ffast-math -funsafe-math-optimizations -DNO_ASM
-		CPUFLAGS   += -Ofast -ffast-math -funsafe-math-optimizations -DNO_ASM
-		HAVE_NEON=1
-		CC         += -miphoneos-version-min=8.0
-		CC_AS      += -miphoneos-version-min=8.0
-		CXX        += -miphoneos-version-min=8.0
-		PLATCFLAGS += -miphoneos-version-min=8.0 -Wno-error=implicit-function-declaration
-		CC = clang -arch arm64 -isysroot $(IOSSDK)
-		CXX = clang++ -arch arm64 -isysroot $(IOSSDK)
-	else
-		PLATCFLAGS += -DOS_MAC_OS_X
-		PLATCFLAGS += -DHAVE_POSIX_MEMALIGN -DNO_ASM
-		PLATCFLAGS += -DIOS -marm
-		CPUFLAGS += -DNO_ASM  -DARM -D__arm__ -DARM_ASM -D__NEON_OPT
-		CPUFLAGS += -marm -mcpu=cortex-a8 -mfpu=neon -mfloat-abi=softfp
-		WITH_DYNAREC=arm
-		HAVE_NEON=1
-		CC         += -miphoneos-version-min=5.0
-		CC_AS      += -miphoneos-version-min=5.0
-		CXX        += -miphoneos-version-min=5.0
-		PLATCFLAGS += -miphoneos-version-min=5.0
-		CC = clang -arch armv7 -isysroot $(IOSSDK)
-		CC_AS = perl ./custom/tools/gas-preprocessor.pl $(CC)
-		CXX = clang++ -arch armv7 -isysroot $(IOSSDK)
-	endif
-   LDFLAGS += -dynamiclib
-   GL_LIB := -framework OpenGLES
-   LDFLAGS += -framework AudioToolbox
-# tvOS
-else ifneq (,$(findstring tvos,$(platform)))
-   ifeq ($(TVOSSDK),)
-      TVOSSDK := $(shell xcodebuild -version -sdk appletvos Path)
-   endif
-
-   TARGET := $(TARGET_NAME)_libretro_tvos.dylib
-   DEFINES += -DIOS -DTVOS
-   GLES = 1
-
-   WITH_DYNAREC=
-   GLES=1
-   GLES3=1
-   FORCE_GLES3=1
-   EGL := 0
-   HAVE_PARALLEL_RSP = 1
-   HAVE_PARALLEL_RDP = 1
-   HAVE_THR_AL = 1
-   LLE = 1
-   PLATCFLAGS += -DHAVE_POSIX_MEMALIGN -DIOS -DOS_IOS
-   PLATCFLAGS += -Ofast -ffast-math -funsafe-math-optimizations -DNO_ASM
-   COREFLAGS  += -Ofast -ffast-math -funsafe-math-optimizations -DNO_ASM
-   CPUFLAGS   += -Ofast -ffast-math -funsafe-math-optimizations -DNO_ASM
-   HAVE_NEON=1
-   CC         += -mappletvos-version-min=8.0
-   CC_AS      += -mappletvos-version-min=8.0
-   CXX        += -mappletvos-version-min=8.0
-   PLATCFLAGS += -mappletvos-version-min=8.0 -Wno-error=implicit-function-declaration
-   CC = clang -arch arm64 -isysroot $(TVOSSDK)
-   CXX = clang++ -arch arm64 -isysroot $(TVOSSDK)
-
-   LDFLAGS += -dynamiclib
-   GL_LIB := -framework OpenGLES
-   LDFLAGS += -framework AudioToolbox
-# Android
-else ifneq (,$(findstring android,$(platform)))
-   ANDROID = 1
-   LDFLAGS += -shared -Wl,--version-script=$(LIBRETRO_DIR)/link.T -Wl,--no-undefined -Wl,--warn-common -llog
-   INCFLAGS += -I$(ROOT_DIR)/GLideN64/src/GLideNHQ/inc
-   ifneq (,$(findstring x86,$(platform)))
-      CC = i686-linux-android-gcc
-      CXX = i686-linux-android-g++
-      WITH_DYNAREC = x86
-      LDFLAGS += -L$(ROOT_DIR)/custom/android/x86
-   else
-      CC = arm-linux-androideabi-gcc
-      CXX = arm-linux-androideabi-g++
-      WITH_DYNAREC = arm
-      HAVE_NEON = 1
-      CPUFLAGS += -march=armv7-a -mfloat-abi=softfp -mfpu=neon
-      LDFLAGS += -march=armv7-a -L$(ROOT_DIR)/custom/android/arm
-   endif
-   ifneq (,$(findstring gles3,$(platform)))
-      GL_LIB := -lGLESv3
-      GLES3 = 1
-      TARGET := $(TARGET_NAME)_gles3_libretro_android.so
-   else
-      GL_LIB := -lGLESv2
-      GLES = 1
-      TARGET := $(TARGET_NAME)_gles2_libretro_android.so
-   endif
-   CPUFLAGS += -DANDROID -DEGL_EGLEXT_PROTOTYPES
-   COREFLAGS += -DOS_LINUX
-   ASFLAGS = -f elf -d ELF_TYPE
-# emscripten
-else ifeq ($(platform), emscripten)
-   TARGET := $(TARGET_NAME)_libretro_emscripten.bc
-   GLES := 1
-   WITH_DYNAREC :=
-   CPUFLAGS += -DEMSCRIPTEN -DNO_ASM -s USE_ZLIB=1
-   PLATCFLAGS += \
-      -Dsinc_resampler=glupen_sinc_resampler \
-      -DCC_resampler=glupen_CC_resampler \
-      -Drglgen_symbol_map=glupen_rglgen_symbol_map \
-      -Drglgen_resolve_symbols_custom=glupen_rglgen_resolve_symbols_custom \
-      -Drglgen_resolve_symbols=glupen_rglgen_resolve_symbols \
-      -Dmemalign_alloc=glupen_memalign_alloc \
-      -Dmemalign_free=glupen_memalign_free \
-      -Dmemalign_alloc_aligned=glupen_memalign_alloc_aligned \
-      -Daudio_resampler_driver_find_handle=glupen_audio_resampler_driver_find_handle \
-      -Daudio_resampler_driver_find_ident=glupen_audio_resampler_driver_find_ident \
-      -Drarch_resampler_realloc=glupen_rarch_resampler_realloc \
-      -Dconvert_float_to_s16_C=glupen_convert_float_to_s16_C \
-      -Dconvert_float_to_s16_init_simd=glupen_convert_float_to_s16_init_simd \
-      -Dconvert_s16_to_float_C=glupen_convert_s16_to_float_C \
-      -Dconvert_s16_to_float_init_simd=glupen_convert_s16_to_float_init_simd \
-      -Dcpu_features_get_perf_counter=glupen_cpu_features_get_perf_counter \
-      -Dcpu_features_get_time_usec=glupen_cpu_features_get_time_usec \
-      -Dcpu_features_get_core_amount=glupen_cpu_features_get_core_amount \
-      -Dcpu_features_get=glupen_cpu_features_get \
-      -Dffs=glupen_ffs \
-      -Dstrlcpy_retro__=glupen_strlcpy_retro__ \
-      -Dstrlcat_retro__=glupen_strlcat_retro__
-   CC = emcc
-   CXX = em++
-   HAVE_NEON = 0
-
-   COREFLAGS += -DOS_LINUX
-   ASFLAGS = -f elf -d ELF_TYPE
-# Windows
-else
-   TARGET := $(TARGET_NAME)_libretro.dll
-   LDFLAGS += -shared -static-libgcc -static-libstdc++ -Wl,--version-script=$(LIBRETRO_DIR)/link.T #-static -lmingw32 -lSDL2main -lSDL2 -mwindows -lm -ldinput8 -ldxguid -ldxerr8 -luser32 -lgdi32 -lwinmm -limm32 -lole32 -loleaut32 -lshell32 -lversion -luuid  -lsdl2_net -lsdl2 -lws2_32 -lSetupapi -lIPHLPAPI
-   GL_LIB := -lopengl32
-   
-   ifeq ($(MSYSTEM),MINGW64)
-      CC ?= x86_64-w64-mingw32-gcc
-      CXX ?= x86_64-w64-mingw32-g++
-      WITH_DYNAREC = x86_64
-      COREFLAGS += -DWIN64 #-DM64P_NETPLAY
-      ASFLAGS = -f win64 -d WIN64
-      PIC = 1
-   else ifeq ($(MSYSTEM),MINGW32)
-      CC ?= i686-w64-mingw32-gcc
-      CXX ?= i686-w64-mingw32-g++
-      WITH_DYNAREC = x86
-      COREFLAGS += -DWIN32
-      PIC = 1
-      ASFLAGS = -f win32 -d WIN32 -d LEADING_UNDERSCORE
-   endif
-
-   HAVE_PARALLEL_RSP = 1
-   HAVE_PARALLEL_RDP = 1
-   HAVE_THR_AL = 1
-   LLE = 1
-   COREFLAGS += -DOS_WINDOWS -DMINGW -DUNICODE
-   CXXFLAGS += -fpermissive
-endif
-
-ifeq ($(STATIC_LINKING), 1)
-   ifneq (,$(findstring win,$(platform)))
-      TARGET := $(TARGET:.dll=.lib)
-   else ifneq ($(platform), $(filter $(platform), osx ios tvos))
-      TARGET := $(TARGET:.dylib=.a)            
-   else
-      TARGET := $(TARGET:.so=.a)
-   endif
-endif
-
-include Makefile.common
-
-ifeq ($(HAVE_NEON), 1)
-   COREFLAGS += -DHAVE_NEON -D__ARM_NEON__ -D__NEON_OPT -ftree-vectorize -funsafe-math-optimizations -fno-finite-math-only -DUSE_SSE2NEON
-   ifeq (,$(filter $(platform),ios-arm64 tvos-arm64))
-      COREFLAGS += -mvectorize-with-neon-quad -ftree-vectorizer-verbose=2
-   endif
-endif
-
-ifeq ($(LLE), 1)
-   COREFLAGS += -DHAVE_LLE
-endif
-
-COREFLAGS += -D__STDC_CONSTANT_MACROS -D__STDC_LIMIT_MACROS -D__LIBRETRO__ -DUSE_FILE32API -DM64P_PLUGIN_API -DM64P_CORE_PROTOTYPES -D_ENDUSER_RELEASE -DSINC_LOWER_QUALITY -DTXFILTER_LIB -D__VEC4_OPT -DMUPENPLUSAPI
-
+ARCH := -march=armv8-a+crc -mtune=cortex-a57 -mtp=soft -mcpu=cortex-a57+crc+fp+simd -fPIE \
+	-specs=$(LIBNX)/switch.specs
 ifeq ($(DEBUG), 1)
-   CPUOPTS += -O0 -g
-   CPUOPTS += -DOPENGL_DEBUG
+OPT := -O0 -g
 else
-   CPUOPTS += -DNDEBUG -fsigned-char -ffast-math -fno-strict-aliasing -fomit-frame-pointer -fvisibility=hidden
-ifneq ($(platform), libnx)
-   CPUOPTS := -O3 $(CPUOPTS)
-endif
-   CXXFLAGS += -fvisibility-inlines-hidden
+OPT := -O3 -g -DNDEBUG -fsigned-char -ffast-math -funsafe-math-optimizations -fno-strict-aliasing \
+	-fomit-frame-pointer -funroll-loops
 endif
 
-# Use -fcommon
-CPUOPTS += -fcommon
+COMMON := $(ARCH) $(OPT) $(DEFINES) $(INCFLAGS) -ffunction-sections -fdata-sections \
+	-ftls-model=local-exec -fcommon -fPIC -MMD -MP
+CFLAGS   := $(COMMON) -std=gnu11 -Wno-discarded-qualifiers $(PARALLEL_RDP_CFLAGS)
+CXXFLAGS := $(COMMON) -std=gnu++14 -fno-rtti -fvisibility-inlines-hidden $(PARALLEL_RDP_CXXFLAGS)
 
-# set C/C++ standard to use
-CFLAGS += -std=gnu11 -D_CRT_SECURE_NO_WARNINGS -Wno-discarded-qualifiers
-CXXFLAGS += -std=gnu++14 -D_CRT_SECURE_NO_WARNINGS
+#------------------------------------------------------------------------------
+# Rules
+#------------------------------------------------------------------------------
 
-# Standalone mode (no libretro frame pump): emulator free-runs on a pthread
-# and presents from the VI path. See STANDALONE_PLAN.md. Objects are built
-# in-tree, so switching modes requires a clean (the build script handles it).
-ifeq ($(TICO_STANDALONE), 1)
-   COREFLAGS += -DTICO_STANDALONE
-endif
-
-ifeq ($(HAVE_LTCG),1)
-   CPUFLAGS += -flto
-endif
-
-ifeq ($(PIC), 1)
-   fpic = -fPIC
-else
-   fpic = -fno-PIC
-endif
-
-OBJECTS     += $(SOURCES_CXX:.cpp=.o) $(SOURCES_C:.c=.o) $(SOURCES_ASM:.S=.o) $(SOURCES_NASM:.asm=.o)
-CXXFLAGS    += $(CPUOPTS) $(COREFLAGS) $(INCFLAGS) $(PLATCFLAGS) $(fpic) $(CPUFLAGS) $(GLFLAGS) $(DYNAFLAGS)
-CFLAGS      += $(CPUOPTS) $(COREFLAGS) $(INCFLAGS) $(PLATCFLAGS) $(fpic) $(CPUFLAGS) $(GLFLAGS) $(DYNAFLAGS)
-
-ifeq (,$(findstring android,$(platform)))
-   LDFLAGS    += -lpthread
-endif
-
-ifeq ($(platform), ios-arm64)
-	LDFLAGS    += $(fpic) -O3 $(CPUOPTS) $(PLATCFLAGS) $(CPUFLAGS)
-else
-	LDFLAGS    += $(fpic) -O3 $(CPUOPTS) $(PLATCFLAGS) $(CPUFLAGS)
-endif
-
-# the .d files define rules; keep "all" the default goal
 .DEFAULT_GOAL := all
 -include $(OBJECTS:.o=.d)
+
 all: $(TARGET)
+
 $(TARGET): $(OBJECTS)
-
-ifeq ($(STATIC_LINKING), 1)
 	$(AR) rcs $@ $(OBJECTS)
-else
-	$(CXX) -o $@ $(OBJECTS) $(LDFLAGS) $(GL_LIB)
-endif
 
-# Script hackery fll or generating ASM include files for the new dynarec assembly code
+# The dynarec's assembly reads struct offsets generated from the core.
 $(AWK_DEST_DIR)/asm_defines_gas.h: $(AWK_DEST_DIR)/asm_defines_nasm.h
 $(AWK_DEST_DIR)/asm_defines_nasm.h: $(ASM_DEFINES_OBJ)
 	$(STRINGS) "$<" | $(TR) -d '\r' | $(AWK) -v dest_dir="$(AWK_DEST_DIR)" -f $(CORE_DIR)/tools/gen_asm_defines.awk
 
-%.o: %.asm $(AWK_DEST_DIR)/asm_defines_gas.h
-	$(NASM) -i$(AWK_DEST_DIR)/ $(ASFLAGS) $< -o $@
-
 %.o: %.S $(AWK_DEST_DIR)/asm_defines_gas.h
-	$(CC_AS) $(CFLAGS) -c $< -o $@
+	$(CC) $(CFLAGS) -c $< -o $@
 
 %.o: %.c
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+	$(CC) $(CFLAGS) -c $< -o $@
 
 $(RSPDIR_PARALLEL)/lightning/lib/lightning.o: $(RSPDIR_PARALLEL)/lightning/lib/lightning.c
-	$(CC) $(CPPFLAGS) $(CFLAGS) -DHAVE_MMAP=1 -c $< -o $@
+	$(CC) $(CFLAGS) -DHAVE_MMAP=1 -c $< -o $@
 
 %.o: %.cpp
-	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
+	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 clean:
-	find $(ROOT_DIR) -name "*.o" -type f -delete
-	find $(ROOT_DIR) -name "*.d" -type f -delete
-	rm -f $(TARGET)
+	find $(ROOT_DIR) -path $(ROOT_DIR)/tico -prune -o \( -name "*.o" -o -name "*.d" \) -type f -print -delete >/dev/null
+	rm -f $(TARGET) $(AWK_DEST_DIR)/asm_defines_gas.h $(AWK_DEST_DIR)/asm_defines_nasm.h
 
-.PHONY: clean
+.PHONY: all clean

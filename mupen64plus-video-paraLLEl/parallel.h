@@ -2,14 +2,14 @@
 #define PARALLEL_H__
 
 #include <volk.h>
-#include <libretro.h>
-#include <libretro_vulkan.h>
+#include <stdbool.h>
+#include "tico_vulkan.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-void parallel_set_vulkan_interface(const struct retro_hw_render_interface_vulkan *vulkan);
+void parallel_set_vulkan_interface(const struct tico_vk_interface *vulkan);
 bool parallel_init(void);
 void parallel_deinit(void);
 bool parallel_frame_is_valid(void);
@@ -36,10 +36,9 @@ void parallel_set_overscan_crop(unsigned pixels);
 void parallel_profile_video_refresh_begin(void);
 void parallel_profile_video_refresh_end(void);
 
-void parallel_get_geometry(struct retro_game_geometry *geom);
 
 const VkApplicationInfo *parallel_get_application_info(void);
-bool parallel_create_device(struct retro_vulkan_context *context,
+bool parallel_create_device(struct tico_vk_context *context,
       VkInstance instance,
       VkPhysicalDevice gpu,
       VkSurfaceKHR surface,

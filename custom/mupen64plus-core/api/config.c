@@ -27,7 +27,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <libretro.h>
+#include <mupen64plus-next_common.h>
 
 #define M64P_CORE_PROTOTYPES 1
 #include "callbacks.h"
@@ -43,7 +43,6 @@
 
 #define SECTION_MAGIC 0xDBDC0580
 
-extern retro_environment_t environ_cb;
 
 typedef struct _config_var {
   char                 *name;
@@ -1283,12 +1282,11 @@ EXPORT const char * CALL ConfigGetParamString(m64p_handle ConfigSectionHandle, c
 /* ------------------------------------------------------ */
 /* OS Abstraction functions, exported outside of the Core */
 /* ------------------------------------------------------ */
-extern retro_environment_t environ_cb;
 
 EXPORT const char * CALL ConfigGetSharedDataFilepath(const char *filename)
 {
-  char* sys_systemDir = NULL;
-  if (!environ_cb(RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY,&sys_systemDir) || !sys_systemDir || !*sys_systemDir)
+  const char* sys_systemDir = tico_m64p_system_dir();
+  if (!sys_systemDir || !*sys_systemDir)
     sys_systemDir = "./";
   static char systemDir[2048];
   strncpy(systemDir, sys_systemDir, 2048);

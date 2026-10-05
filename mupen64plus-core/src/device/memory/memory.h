@@ -41,7 +41,9 @@ struct mem_handler
     write32fn write32;
 };
 
-struct retroarch_mem_mapping {
+/* a region the frontend may read directly (RetroAchievements) */
+#define FRONTEND_MEM_READ_ONLY 1
+struct frontend_mem_mapping {
     void* ptr;
     size_t len;
     uint64_t flags;
@@ -52,7 +54,7 @@ struct mem_mapping
     uint32_t end;       /* inclusive */
     int type;
     struct mem_handler handler;
-    struct retroarch_mem_mapping retroarch_mapping;
+    struct frontend_mem_mapping frontend_mapping;
 };
 
 struct memory

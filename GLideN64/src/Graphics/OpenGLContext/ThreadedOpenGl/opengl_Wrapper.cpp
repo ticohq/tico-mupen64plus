@@ -73,8 +73,7 @@ namespace opengl {
 	void FunctionWrapper::commandLoop()
 	{
 		bool timeToShutdown = false;
-		threaded_gl_safe_shutdown = false;
-        
+
 		while (!timeToShutdown) {
 			std::shared_ptr<OpenGlCommand> command;
 
@@ -88,16 +87,7 @@ namespace opengl {
 					timeToShutdown = command->isTimeToShutdown();
 				}
 			}
-			if(!retro_savestate_complete)
-			{				
-				// Yield to frontend
-				co_switch(retro_thread);
-			}
 		}
-		
-		// Return
-		threaded_gl_safe_shutdown = true;
-		co_switch(retro_thread);
 	}
 
 #if defined(GL_DEBUG) && defined(GL_PROFILE)
