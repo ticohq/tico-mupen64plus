@@ -42,27 +42,6 @@
           "title": "settings_mupen64plus_section_emulation",
           "options": [
             {
-              "key": "mupen64plus-cpucore",
-              "label": "settings_mupen64plus_cpucore",
-              "type": "enum",
-              "default": "dynamic_recompiler",
-              "choices": [
-                {
-                  "label": "Pure Interpreter",
-                  "value": "pure_interpreter"
-                },
-                {
-                  "label": "Cached Interpreter",
-                  "value": "cached_interpreter"
-                },
-                {
-                  "label": "Dynarec",
-                  "value": "dynamic_recompiler"
-                }
-              ],
-              "restart": true
-            },
-            {
               "key": "mupen64plus-Framerate",
               "label": "settings_mupen64plus_framerate",
               "type": "enum",
@@ -490,217 +469,41 @@
       ]
     },
     {
-      "name": "settings_mupen64plus_tab_gliden64",
+      "name": "settings_mupen64plus_tab_video",
       "sections": [
         {
           "title": "settings_mupen64plus_section_resolution",
           "options": [
             {
-              "key": "mupen64plus-aspect",
-              "label": "settings_mupen64plus_aspect",
+              "key": "mupen64plus-gliden64-resolution",
+              "label": "settings_mupen64plus_internal_resolution",
               "type": "enum",
-              "default": "4:3",
+              "default": "3",
               "choices": [
                 {
-                  "label": "Original (4:3)",
-                  "value": "4:3"
-                },
-                {
-                  "label": "Wide (Stretched)",
-                  "value": "16:9"
-                },
-                {
-                  "label": "Wide (Adjusted)",
-                  "value": "16:9 adjusted"
-                }
-              ],
-              "restart": true
-            },
-            {
-              "key": "mupen64plus-43screensize",
-              "label": "settings_mupen64plus_43screensize",
-              "type": "enum",
-              "default": "640x480",
-              "choices": [
-                {
-                  "label": "320x240",
-                  "value": "320x240"
-                },
-                {
-                  "label": "640x480",
-                  "value": "640x480"
-                },
-                {
-                  "label": "960x720",
-                  "value": "960x720"
-                },
-                {
-                  "label": "1280x960",
-                  "value": "1280x960"
-                },
-                {
-                  "label": "1440x1080",
-                  "value": "1440x1080"
-                },
-                {
-                  "label": "1600x1200",
-                  "value": "1600x1200"
-                },
-                {
-                  "label": "1920x1440",
-                  "value": "1920x1440"
-                },
-                {
-                  "label": "2240x1680",
-                  "value": "2240x1680"
-                },
-                {
-                  "label": "2560x1920",
-                  "value": "2560x1920"
-                },
-                {
-                  "label": "2880x2160",
-                  "value": "2880x2160"
-                },
-                {
-                  "label": "3200x2400",
-                  "value": "3200x2400"
-                },
-                {
-                  "label": "3520x2640",
-                  "value": "3520x2640"
-                },
-                {
-                  "label": "3840x2880",
-                  "value": "3840x2880"
-                }
-              ],
-              "restart": true
-            },
-            {
-              "key": "mupen64plus-169screensize",
-              "label": "settings_mupen64plus_169screensize",
-              "type": "enum",
-              "default": "960x540",
-              "choices": [
-                {
-                  "label": "640x360 (16:9)",
-                  "value": "640x360"
-                },
-                {
-                  "label": "960x540 (16:9)",
-                  "value": "960x540"
-                },
-                {
-                  "label": "1280x720 (16:9)",
-                  "value": "1280x720"
-                },
-                {
-                  "label": "1706x720 (64:27)",
-                  "value": "1706x720"
-                },
-                {
-                  "label": "1366x768 (16:9)",
-                  "value": "1366x768"
-                },
-                {
-                  "label": "1920x810 (64:27)",
-                  "value": "1920x810"
-                },
-                {
-                  "label": "1920x1080 (16:9)",
-                  "value": "1920x1080"
-                },
-                {
-                  "label": "2560x1080 (64:27)",
-                  "value": "2560x1080"
-                },
-                {
-                  "label": "2560x1440 (16:9)",
-                  "value": "2560x1440"
-                },
-                {
-                  "label": "3414x1440 (64:27)",
-                  "value": "3414x1440"
-                },
-                {
-                  "label": "3840x2160 (16:9)",
-                  "value": "3840x2160"
-                },
-                {
-                  "label": "4096x2160 (17:9)",
-                  "value": "4096x2160"
-                },
-                {
-                  "label": "5120x1440 (32:9)",
-                  "value": "5120x1440"
-                },
-                {
-                  "label": "5120x2160 (64:27)",
-                  "value": "5120x2160"
-                },
-                {
-                  "label": "7680x3240 (64:27)",
-                  "value": "7680x3240"
-                },
-                {
-                  "label": "7680x4320 (16:9)",
-                  "value": "7680x4320"
-                },
-                {
-                  "label": "7680x2160 (32:9)",
-                  "value": "7680x2160"
-                },
-                {
-                  "label": "10240x4320 (64:27)",
-                  "value": "10240x4320"
-                }
-              ],
-              "restart": true
-            },
-            {
-              "key": "mupen64plus-EnableNativeResFactor",
-              "label": "settings_mupen64plus_enablenativeresfactor",
-              "type": "enum",
-              "default": "0",
-              "choices": [
-                {
-                  "label": "Disabled",
-                  "value": "0"
-                },
-                {
-                  "label": "1x",
+                  "label": "1x (320x240)",
                   "value": "1"
                 },
                 {
-                  "label": "2x",
+                  "label": "2x (640x480)",
                   "value": "2"
                 },
                 {
-                  "label": "3x",
+                  "label": "3x (960x720)",
                   "value": "3"
                 },
                 {
-                  "label": "4x",
+                  "label": "4x (1280x960)",
                   "value": "4"
-                },
-                {
-                  "label": "5x",
-                  "value": "5"
-                },
-                {
-                  "label": "6x",
-                  "value": "6"
-                },
-                {
-                  "label": "7x",
-                  "value": "7"
-                },
-                {
-                  "label": "8x",
-                  "value": "8"
                 }
               ],
+              "restart": true
+            },
+            {
+              "key": "mupen64plus-gliden64-widescreen",
+              "label": "settings_mupen64plus_widescreen",
+              "type": "bool",
+              "default": "False",
               "restart": true
             }
           ]

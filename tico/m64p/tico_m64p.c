@@ -276,7 +276,6 @@ static void apply_controller_options(void)
 static void apply_startup_options(void)
 {
    const char *v;
-   const char *screen_size_key = CORE_NAME "-43screensize";
 
    if (s_renderer == TICO_M64P_RENDERER_PARALLEL)
    {
@@ -364,46 +363,31 @@ static void apply_startup_options(void)
    v = opt(CORE_NAME "-GLideN64IniBehaviour");
    GLideN64IniBehaviour = !v ? 0 : !strcmp(v, "early") ? 1 : !strcmp(v, "disabled") ? (uint32_t)-1 : 0;
 
-   v = opt(CORE_NAME "-cpucore");
+   /* the interpreters cannot keep up on the console */
    r4300_emumode = EMUMODE_DYNAREC;
-   if (v && !strcmp(v, "pure_interpreter"))
-      r4300_emumode = EMUMODE_PURE_INTERPRETER;
-   else if (v && !strcmp(v, "cached_interpreter"))
-      r4300_emumode = EMUMODE_INTERPRETER;
 
-   v = opt(CORE_NAME "-aspect");
-   if (v && !strcmp(v, "16:9 adjusted"))
+   /* GLideN64 renders the N64's 320x240 `factor` times over into a
+    * framebuffer of exactly that size, 4:3, or 16:9 with its adjusted aspect
+    * (the widescreen hack); tico scales the frame to the screen. */
    {
-      AspectRatio = 3; /* Aspect::aAdjust */
-      screen_size_key = CORE_NAME "-169screensize";
-   }
-   else if (v && !strcmp(v, "16:9"))
-   {
-      AspectRatio = 0; /* Aspect::aStretch */
-      screen_size_key = CORE_NAME "-169screensize";
-   }
-   else
-   {
-      AspectRatio = 1; /* Aspect::a43 */
-      s_screen_aspect = 4.0f / 3.0f;
-   }
-
-   EnableNativeResFactor = opt_int(CORE_NAME "-EnableNativeResFactor", 0);
-   v = opt(screen_size_key);
-   if (v)
-   {
-      unsigned w = 0, h = 0;
-      if (sscanf(v, "%ux%u", &w, &h) == 2 && w && h)
+      const unsigned factor = (unsigned)opt_int(CORE_NAME "-gliden64-resolution", 3);
+      const unsigned scale = factor >= 1 && factor <= 4 ? factor : 3;
+      const bool widescreen = s_renderer == TICO_M64P_RENDERER_GLIDEN64 &&
+                              opt_is(CORE_NAME "-gliden64-widescreen", "True");
+      EnableNativeResFactor = scale;
+      s_screen_height = 240 * scale;
+      if (widescreen)
       {
-         s_screen_width = w;
-         s_screen_height = h;
+         AspectRatio = 3; /* Aspect::aAdjust */
+         s_screen_width = ((s_screen_height * 16 / 9) + 1) & ~1u;
       }
-   }
-   if (AspectRatio != 1)
+      else
+      {
+         AspectRatio = 1; /* Aspect::a43 */
+         s_screen_width = 320 * scale;
+      }
       s_screen_aspect = (float)s_screen_width / (float)s_screen_height;
-   /* GLideN64 would blit a bigger image onto these small framebuffers */
-   if ((s_screen_width == 320 && s_screen_height == 240) || (s_screen_width == 640 && s_screen_height == 360))
-      EnableNativeResFactor = !EnableNativeResFactor ? 1 : EnableNativeResFactor;
+   }
 
    CountPerOp = opt_int(CORE_NAME "-CountPerOp", 0);
    CountPerOpDenomPot = opt_int(CORE_NAME "-CountPerOpDenomPot", 0);

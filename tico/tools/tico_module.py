@@ -31,12 +31,17 @@ LANGUAGES = ("en", "de", "es", "fr", "ja", "pt", "ru", "zh")
 P = "settings_mupen64plus_"
 
 # Options the frontend decides instead of the user: the renderer setting picks
-# the RDP and RSP plugins, GLideN64 never uses its threaded wrapper here, and
-# the Controls tab maps buttons.
+# the RDP and RSP plugins, GLideN64 never uses its threaded wrapper here, the
+# Controls tab maps buttons, the CPU is always the dynamic recompiler (the
+# interpreters cannot keep up on the console), and GLideN64's framebuffer
+# follows the internal resolution and widescreen settings below, with tico's
+# display settings doing all the scaling to the screen.
 EXCLUDED = {
     "mupen64plus-rdp-plugin", "mupen64plus-rsp-plugin", "mupen64plus-ThreadedRenderer",
     "mupen64plus-r-cbutton", "mupen64plus-l-cbutton", "mupen64plus-d-cbutton",
-    "mupen64plus-u-cbutton", "mupen64plus-alt-map",
+    "mupen64plus-u-cbutton", "mupen64plus-alt-map", "mupen64plus-cpucore",
+    "mupen64plus-43screensize", "mupen64plus-169screensize", "mupen64plus-aspect",
+    "mupen64plus-EnableNativeResFactor",
 }
 
 # Read while the game runs (tico_m64p_apply_options, or by the frontend);
@@ -56,7 +61,7 @@ LIVE = {
 LAYOUT = [
     ("tab_system", [
         ("section_renderer", ["tico_renderer"]),
-        ("section_emulation", ["mupen64plus-cpucore", "mupen64plus-Framerate", "mupen64plus-virefresh",
+        ("section_emulation", ["mupen64plus-Framerate", "mupen64plus-virefresh",
                                "mupen64plus-CountPerOp", "mupen64plus-CountPerOpDenomPot",
                                "mupen64plus-FrameDuping"]),
         ("section_compatibility", ["mupen64plus-ForceDisableExtraMem", "mupen64plus-IgnoreTLBExceptions",
@@ -67,9 +72,8 @@ LAYOUT = [
         ("section_fast_forward", ["fast_forward_speed", "fast_forward_mode", "fast_forward_hotkey"]),
         ("section_hud", ["fps_counter_position", "rendered_ir_position"]),
     ]),
-    ("tab_gliden64", [
-        ("section_resolution", ["mupen64plus-aspect", "mupen64plus-43screensize", "mupen64plus-169screensize",
-                                "mupen64plus-EnableNativeResFactor"]),
+    ("tab_video", [
+        ("section_resolution", ["mupen64plus-gliden64-resolution", "mupen64plus-gliden64-widescreen"]),
         ("section_filtering", ["mupen64plus-BilinearMode", "mupen64plus-HybridFilter", "mupen64plus-MultiSampling",
                                "mupen64plus-FXAA", "mupen64plus-DitheringPattern",
                                "mupen64plus-DitheringQuantization", "mupen64plus-RDRAMImageDitheringMode"]),
@@ -140,6 +144,14 @@ FRONTEND = {
     "tico_renderer": enum("tico_renderer", "renderer", "vk",
                           [("Vulkan (NVK)", "vk"), ("OpenGL (NVC0)", "gl"), ("Zink (OpenGL on NVK)", "zink")],
                           restart=True, tico_only=True),
+    # GLideN64 renders the N64's 320x240 this many times over, into a
+    # framebuffer of exactly that size (tico_m64p.c); widescreen widens it to
+    # 16:9 with GLideN64's adjusted aspect, which draws more of the scene
+    "mupen64plus-gliden64-resolution": enum("mupen64plus-gliden64-resolution", "internal_resolution", "3",
+                                            [("1x (320x240)", "1"), ("2x (640x480)", "2"),
+                                             ("3x (960x720)", "3"), ("4x (1280x960)", "4")], restart=True),
+    "mupen64plus-gliden64-widescreen": {"key": "mupen64plus-gliden64-widescreen", "label": P + "widescreen",
+                                        "type": "bool", "default": "False", "restart": True},
     "display_mode": enum("display_mode", "display_mode", "Display", [("Integer", "Integer"), ("Display", "Display")]),
     "display_size": enum("display_size", "display_size", "4:3",
                          [("Stretch", "Stretch"), ("4:3", "4:3"), ("16:9", "16:9"), ("Original", "Original"),
@@ -160,7 +172,14 @@ STRINGS = {
     "tab_system": {"en": "System"},
     "tab_display": {"en": "Display"},
     "tab_controls": {"en": "Controls"},
-    "tab_gliden64": {"en": "GLideN64"},
+    "tab_video": {"en": "Video", "de": "Video", "es": "Vídeo", "fr": "Vidéo", "ja": "ビデオ", "pt": "Vídeo",
+                  "ru": "Видео", "zh": "视频"},
+    "internal_resolution": {"en": "Internal Resolution", "de": "Interne Auflösung", "es": "Resolución interna",
+                            "fr": "Résolution interne", "ja": "内部解像度", "pt": "Resolução interna",
+                            "ru": "Внутреннее разрешение", "zh": "内部分辨率"},
+    "widescreen": {"en": "Widescreen Hack", "de": "Breitbild-Hack", "es": "Hack de pantalla panorámica",
+                   "fr": "Hack écran large", "ja": "ワイドスクリーンハック", "pt": "Hack de tela panorâmica",
+                   "ru": "Широкоэкранный хак", "zh": "宽屏修改"},
     "tab_parallel": {"en": "paraLLEl-RDP"},
     "section_renderer": {"en": "Renderer", "de": "Renderer", "es": "Renderizador", "fr": "Moteur de rendu",
                          "ja": "レンダラー", "pt": "Renderizador", "ru": "Рендерер", "zh": "渲染器"},
