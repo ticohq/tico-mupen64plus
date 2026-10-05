@@ -1,42 +1,41 @@
-# Mupen64Plus-Next
+<picture>  
+<source media="(prefers-color-scheme: dark)" srcset="https://i.imgur.com/8qsV6MH.png">  
+<source media="(prefers-color-scheme: light)" srcset="https://i.imgur.com/4cpzGnB.png">  
+<img src="https://i.imgur.com/8qsV6MH.png" width="200">  
+</picture>  
 
-Mupen64Plus-Next is a N64 emulation library for the [libretro API](http://www.libretro.com/), based on Mupen64Plus (see below).
+*Part of the Tico ecosystem* — https://www.ticoverse.com
 
-It is also the successor of the old Mupen64Plus libretro core.
+**Mupen64Plus-Next** is a well-established emulator for the Nintendo 64, built on Mupen64Plus with GLideN64, and known for its broad compatibility and steady performance.
 
-> You can *always* rely on it to give you an excellent Majora's Mask experience. Seriously.
+This fork adapts Mupen64Plus-Next to work with the Tico frontend and provides a standalone build for the Nintendo Switch, adding a small set of practical features while preserving the qualities that made the original a trusted choice.
 
-#### How is this different from any N64 libretro-core, ever?
+----------
 
-Due to the amount of libraries that are used and are in regular need of maintenance, I have strict rules about adding dependencies.  
-This allows for easy maintenance, so available time can be spent on useful improvements and lowers the burden.  
-By default the experience will be very simliar to the N64 emulators you know and love with *a lot extra*.
+## Summary
 
-> **Sidenote:**  
-While I accept pretty much every reasonable contribution, hacks must not impact behavior by default, unless justified.  
-If you need to add a dependency, please consult me first.  
-Force-pushes on all branches but `develop` and `master` are fair game.
-`master` has the best stability memes, if that's your *thing*.
+This fork focuses on making Mupen64Plus-Next more usable in practice without changing its core design.
 
-#### Used Technologies
+It adds:
 
-The following projects have been incorporated into this repository:
+-   Custom overlay matching Tico design, including time, date, user avatar, and game title
+-   Explicit control over display (integer scaling and aspect ratios)
+-   Internal resolution and widescreen settings for GLideN64
+-   Built-in save and load state support, with a picture of each slot
+-   Integrated RetroAchievements with custom alerts
 
-- [mupen64plus](https://github.com/mupen64plus/mupen64plus-core)
-- [GLideN64](https://github.com/gonetz/GLideN64)
-- [cxd4](https://github.com/cxd4/rsp)
-- [parallel-rsp](https://github.com/Themaister/parallel-rsp)
-- [angrylion-rdp-plus](https://github.com/ata4/angrylion-rdp-plus) (Currently based on it's [ParaLLel](https://github.com/libretro/parallel-n64/) variant)
+----------
 
-#### Acknowledgments
+## Renderer
 
-A special thanks to:
+The Switch build runs GLideN64 on OpenGL, through Mesa 20.1's nvc0 driver.
 
-- The Mupen64Plus Team, especially Gillou68310
-- gonetz and those that have worked on GLideN64, especially fzurita
-- The Authors of cxd4 and angrylion-rdp-plus (ata4)
-- themaister for parallel-rsp and parallel-rdp (including the Vulkan integration)
-- Everyone in the libretro Team
+Vulkan works too: built against a newer Mesa with NVK, the same code runs paraLLEl-RDP and paraLLEl-RSP. It is more accurate, but much heavier than GLideN64 and not worth it on Switch hardware, so this build sticks with the older Mesa and OpenGL, which performs better.
 
+----------
 
-\- m4xw
+## A Note
+
+A lot of work in this scene disappears over time — not because it lacked value, but because it was never shared.
+
+If you are building something, consider releasing it. Even small contributions can help others move forward.
