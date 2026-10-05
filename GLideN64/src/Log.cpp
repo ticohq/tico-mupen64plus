@@ -152,7 +152,7 @@ void LogDebug(const char* _fileName, int _line, u16 _type, const char* _format, 
 	va_end(vaArgs);
 
 	std::stringstream formatString;
-	formatString << _fileName << ":" << _line << ", \"" << zc.data() << "\"";
+	formatString << _fileName << ":" << _line << ", \"" << zc.data() << "\"\n";
 
 	tico_m64p_log(TICO_LOG_INFO, "%s\n", formatString.str().c_str());
 }

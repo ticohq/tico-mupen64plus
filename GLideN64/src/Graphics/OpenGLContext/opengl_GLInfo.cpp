@@ -207,14 +207,14 @@ void GLInfo::init() {
 	eglImage = (Utils::isEGLExtensionSupported("EGL_KHR_image_base") || Utils::isEGLExtensionSupported("EGL_KHR_image"));
 	ext_fetch_arm =  Utils::isExtensionSupported(*this, "GL_ARM_shader_framebuffer_fetch") && !ext_fetch;
 
-	// Disable framebuffer fetch on freedreno desktop - causes rendering issues
-	if (isFreedreno && !isGLESX) {
+	// Disable broken extensions if dual_source_blending is disabled (which is currently buggy with some settings)
+	dual_source_blending = false; //!isGLESX || ((!isGLES2) && (Utils::isExtensionSupported(*this, "GL_EXT_blend_func_extended") && !isAnyAdreno));
+	if (!dual_source_blending) {
 		ext_fetch = false;
 		ext_fetch_arm = false;
 		n64DepthWithFbFetch = false;
 	}
 
-	dual_source_blending = false; //!isGLESX || ((!isGLES2) && (Utils::isExtensionSupported(*this, "GL_EXT_blend_func_extended") && !isAnyAdreno));
 	anisotropic_filtering = Utils::isExtensionSupported(*this, "GL_EXT_texture_filter_anisotropic");
 
 #ifdef OS_ANDROID
@@ -228,6 +228,11 @@ void GLInfo::init() {
 	}
 
 	eglImageFramebuffer = eglImage && !isGLES2;
+
+#ifdef WEBOS
+	eglImage = false;
+	eglImageFramebuffer = false;
+#endif
 
 	if (config.frameBufferEmulation.N64DepthCompare != Config::dcDisable) {
 		if (config.frameBufferEmulation.N64DepthCompare == Config::dcFast) {
