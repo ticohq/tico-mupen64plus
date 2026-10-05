@@ -20,12 +20,13 @@
         ".7z",
         ".rar"
       ],
+      "games_file": "n64.json",
       "retroachievements_id": 2,
       "colors": {
-        "start": "3A8DDE",
-        "end": "2DB36C",
-        "start_dark": "2A68A6",
-        "end_dark": "1F8450"
+        "start": "4FD97A",
+        "end": "4F8FE6",
+        "start_dark": "39A85A",
+        "end_dark": "3963A8"
       }
     }
   ]
