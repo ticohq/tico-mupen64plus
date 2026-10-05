@@ -1,0 +1,3826 @@
+{
+  "core_id": "mupen64plus",
+  "display_name": "Mupen64Plus",
+  "config_file": "mupen64plus.jsonc",
+  "slugs": [
+    "n64"
+  ],
+  "bool_true_value": "True",
+  "bool_false_value": "False",
+  "tabs": [
+    {
+      "name": "settings_mupen64plus_tab_system",
+      "sections": [
+        {
+          "title": "settings_mupen64plus_section_renderer",
+          "options": [
+            {
+              "key": "tico_renderer",
+              "label": "settings_mupen64plus_renderer",
+              "type": "enum",
+              "default": "vk",
+              "choices": [
+                {
+                  "label": "Vulkan (NVK)",
+                  "value": "vk"
+                },
+                {
+                  "label": "OpenGL (NVC0)",
+                  "value": "gl"
+                },
+                {
+                  "label": "Zink (OpenGL on NVK)",
+                  "value": "zink"
+                }
+              ],
+              "restart": true,
+              "tico_only": true
+            }
+          ]
+        },
+        {
+          "title": "settings_mupen64plus_section_emulation",
+          "options": [
+            {
+              "key": "mupen64plus-cpucore",
+              "label": "settings_mupen64plus_cpucore",
+              "type": "enum",
+              "default": "dynamic_recompiler",
+              "choices": [
+                {
+                  "label": "Pure Interpreter",
+                  "value": "pure_interpreter"
+                },
+                {
+                  "label": "Cached Interpreter",
+                  "value": "cached_interpreter"
+                },
+                {
+                  "label": "Dynarec",
+                  "value": "dynamic_recompiler"
+                }
+              ],
+              "restart": true
+            },
+            {
+              "key": "mupen64plus-Framerate",
+              "label": "settings_mupen64plus_framerate",
+              "type": "enum",
+              "default": "Original",
+              "choices": [
+                {
+                  "label": "Original",
+                  "value": "Original"
+                },
+                {
+                  "label": "Fullspeed",
+                  "value": "Fullspeed"
+                }
+              ],
+              "restart": true
+            },
+            {
+              "key": "mupen64plus-virefresh",
+              "label": "settings_mupen64plus_virefresh",
+              "type": "enum",
+              "default": "Auto",
+              "choices": [
+                {
+                  "label": "Auto",
+                  "value": "Auto"
+                },
+                {
+                  "label": "1500",
+                  "value": "1500"
+                },
+                {
+                  "label": "2200",
+                  "value": "2200"
+                }
+              ],
+              "restart": true
+            },
+            {
+              "key": "mupen64plus-CountPerOp",
+              "label": "settings_mupen64plus_countperop",
+              "type": "enum",
+              "default": "0",
+              "choices": [
+                {
+                  "label": "0",
+                  "value": "0"
+                },
+                {
+                  "label": "1",
+                  "value": "1"
+                },
+                {
+                  "label": "2",
+                  "value": "2"
+                },
+                {
+                  "label": "3",
+                  "value": "3"
+                },
+                {
+                  "label": "4",
+                  "value": "4"
+                },
+                {
+                  "label": "5",
+                  "value": "5"
+                }
+              ],
+              "restart": true
+            },
+            {
+              "key": "mupen64plus-CountPerOpDenomPot",
+              "label": "settings_mupen64plus_countperopdenompot",
+              "type": "enum",
+              "default": "0",
+              "choices": [
+                {
+                  "label": "0",
+                  "value": "0"
+                },
+                {
+                  "label": "1",
+                  "value": "1"
+                },
+                {
+                  "label": "2",
+                  "value": "2"
+                },
+                {
+                  "label": "3",
+                  "value": "3"
+                },
+                {
+                  "label": "4",
+                  "value": "4"
+                },
+                {
+                  "label": "5",
+                  "value": "5"
+                },
+                {
+                  "label": "6",
+                  "value": "6"
+                },
+                {
+                  "label": "7",
+                  "value": "7"
+                },
+                {
+                  "label": "8",
+                  "value": "8"
+                },
+                {
+                  "label": "9",
+                  "value": "9"
+                },
+                {
+                  "label": "10",
+                  "value": "10"
+                },
+                {
+                  "label": "11",
+                  "value": "11"
+                }
+              ],
+              "restart": true
+            },
+            {
+              "key": "mupen64plus-FrameDuping",
+              "label": "settings_mupen64plus_frameduping",
+              "type": "bool",
+              "default": "True",
+              "restart": true
+            }
+          ]
+        },
+        {
+          "title": "settings_mupen64plus_section_compatibility",
+          "options": [
+            {
+              "key": "mupen64plus-ForceDisableExtraMem",
+              "label": "settings_mupen64plus_forcedisableextramem",
+              "type": "bool",
+              "default": "False",
+              "restart": true
+            },
+            {
+              "key": "mupen64plus-IgnoreTLBExceptions",
+              "label": "settings_mupen64plus_ignoretlbexceptions",
+              "type": "enum",
+              "default": "False",
+              "choices": [
+                {
+                  "label": "Don't Ignore",
+                  "value": "False"
+                },
+                {
+                  "label": "Ignore TLB Exceptions if not using TLB",
+                  "value": "OnlyNotEnabled"
+                },
+                {
+                  "label": "Always Ignore TLB Exceptions",
+                  "value": "AlwaysIgnoreTLB"
+                }
+              ],
+              "restart": true
+            },
+            {
+              "key": "mupen64plus-parallel-rsp-hle-audio",
+              "label": "settings_mupen64plus_parallel_rsp_hle_audio",
+              "type": "bool",
+              "default": "True",
+              "restart": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "settings_mupen64plus_tab_display",
+      "sections": [
+        {
+          "title": "settings_mupen64plus_section_screen",
+          "options": [
+            {
+              "key": "display_mode",
+              "label": "settings_mupen64plus_display_mode",
+              "type": "enum",
+              "default": "Display",
+              "choices": [
+                {
+                  "label": "Integer",
+                  "value": "Integer"
+                },
+                {
+                  "label": "Display",
+                  "value": "Display"
+                }
+              ]
+            },
+            {
+              "key": "display_size",
+              "label": "settings_mupen64plus_display_size",
+              "type": "enum",
+              "default": "4:3",
+              "choices": [
+                {
+                  "label": "Stretch",
+                  "value": "Stretch"
+                },
+                {
+                  "label": "4:3",
+                  "value": "4:3"
+                },
+                {
+                  "label": "16:9",
+                  "value": "16:9"
+                },
+                {
+                  "label": "Original",
+                  "value": "Original"
+                },
+                {
+                  "label": "1x",
+                  "value": "1x"
+                },
+                {
+                  "label": "2x",
+                  "value": "2x"
+                },
+                {
+                  "label": "Auto",
+                  "value": "Auto"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "title": "settings_mupen64plus_section_fast_forward",
+          "options": [
+            {
+              "key": "fast_forward_speed",
+              "label": "settings_mupen64plus_fast_forward_speed",
+              "type": "enum",
+              "default": "200",
+              "choices": [
+                {
+                  "label": "150%",
+                  "value": "150"
+                },
+                {
+                  "label": "200%",
+                  "value": "200"
+                },
+                {
+                  "label": "300%",
+                  "value": "300"
+                },
+                {
+                  "label": "400%",
+                  "value": "400"
+                },
+                {
+                  "label": "Unlimited",
+                  "value": "unlimited"
+                }
+              ]
+            },
+            {
+              "key": "fast_forward_mode",
+              "label": "settings_mupen64plus_fast_forward_mode",
+              "type": "enum",
+              "default": "hold",
+              "choices": [
+                {
+                  "label": "Hold",
+                  "value": "hold"
+                },
+                {
+                  "label": "Toggle",
+                  "value": "toggle"
+                }
+              ]
+            },
+            {
+              "key": "fast_forward_hotkey",
+              "label": "settings_mupen64plus_fast_forward_hotkey",
+              "type": "enum",
+              "default": "None",
+              "choices": [
+                {
+                  "label": "A",
+                  "value": "A"
+                },
+                {
+                  "label": "B",
+                  "value": "B"
+                },
+                {
+                  "label": "X",
+                  "value": "X"
+                },
+                {
+                  "label": "Y",
+                  "value": "Y"
+                },
+                {
+                  "label": "L",
+                  "value": "L"
+                },
+                {
+                  "label": "R",
+                  "value": "R"
+                },
+                {
+                  "label": "ZL",
+                  "value": "ZL"
+                },
+                {
+                  "label": "ZR",
+                  "value": "ZR"
+                },
+                {
+                  "label": "Plus",
+                  "value": "Plus"
+                },
+                {
+                  "label": "Minus",
+                  "value": "Minus"
+                },
+                {
+                  "label": "Left stick",
+                  "value": "StickL"
+                },
+                {
+                  "label": "Right stick",
+                  "value": "StickR"
+                },
+                {
+                  "label": "Up",
+                  "value": "Up"
+                },
+                {
+                  "label": "Down",
+                  "value": "Down"
+                },
+                {
+                  "label": "Left",
+                  "value": "Left"
+                },
+                {
+                  "label": "Right",
+                  "value": "Right"
+                },
+                {
+                  "label": "Disabled",
+                  "value": "None"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "title": "settings_mupen64plus_section_hud",
+          "options": [
+            {
+              "key": "fps_counter_position",
+              "label": "settings_mupen64plus_fps_counter",
+              "type": "enum",
+              "default": "hidden",
+              "choices": [
+                {
+                  "label": "Hidden",
+                  "value": "hidden"
+                },
+                {
+                  "label": "Top left",
+                  "value": "top_left"
+                },
+                {
+                  "label": "Top right",
+                  "value": "top_right"
+                },
+                {
+                  "label": "Bottom left",
+                  "value": "bottom_left"
+                },
+                {
+                  "label": "Bottom right",
+                  "value": "bottom_right"
+                }
+              ]
+            },
+            {
+              "key": "rendered_ir_position",
+              "label": "settings_mupen64plus_rendered_resolution",
+              "type": "enum",
+              "default": "hidden",
+              "choices": [
+                {
+                  "label": "Hidden",
+                  "value": "hidden"
+                },
+                {
+                  "label": "Top left",
+                  "value": "top_left"
+                },
+                {
+                  "label": "Top right",
+                  "value": "top_right"
+                },
+                {
+                  "label": "Bottom left",
+                  "value": "bottom_left"
+                },
+                {
+                  "label": "Bottom right",
+                  "value": "bottom_right"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "settings_mupen64plus_tab_gliden64",
+      "sections": [
+        {
+          "title": "settings_mupen64plus_section_resolution",
+          "options": [
+            {
+              "key": "mupen64plus-aspect",
+              "label": "settings_mupen64plus_aspect",
+              "type": "enum",
+              "default": "4:3",
+              "choices": [
+                {
+                  "label": "Original (4:3)",
+                  "value": "4:3"
+                },
+                {
+                  "label": "Wide (Stretched)",
+                  "value": "16:9"
+                },
+                {
+                  "label": "Wide (Adjusted)",
+                  "value": "16:9 adjusted"
+                }
+              ],
+              "restart": true
+            },
+            {
+              "key": "mupen64plus-43screensize",
+              "label": "settings_mupen64plus_43screensize",
+              "type": "enum",
+              "default": "640x480",
+              "choices": [
+                {
+                  "label": "320x240",
+                  "value": "320x240"
+                },
+                {
+                  "label": "640x480",
+                  "value": "640x480"
+                },
+                {
+                  "label": "960x720",
+                  "value": "960x720"
+                },
+                {
+                  "label": "1280x960",
+                  "value": "1280x960"
+                },
+                {
+                  "label": "1440x1080",
+                  "value": "1440x1080"
+                },
+                {
+                  "label": "1600x1200",
+                  "value": "1600x1200"
+                },
+                {
+                  "label": "1920x1440",
+                  "value": "1920x1440"
+                },
+                {
+                  "label": "2240x1680",
+                  "value": "2240x1680"
+                },
+                {
+                  "label": "2560x1920",
+                  "value": "2560x1920"
+                },
+                {
+                  "label": "2880x2160",
+                  "value": "2880x2160"
+                },
+                {
+                  "label": "3200x2400",
+                  "value": "3200x2400"
+                },
+                {
+                  "label": "3520x2640",
+                  "value": "3520x2640"
+                },
+                {
+                  "label": "3840x2880",
+                  "value": "3840x2880"
+                }
+              ],
+              "restart": true
+            },
+            {
+              "key": "mupen64plus-169screensize",
+              "label": "settings_mupen64plus_169screensize",
+              "type": "enum",
+              "default": "960x540",
+              "choices": [
+                {
+                  "label": "640x360 (16:9)",
+                  "value": "640x360"
+                },
+                {
+                  "label": "960x540 (16:9)",
+                  "value": "960x540"
+                },
+                {
+                  "label": "1280x720 (16:9)",
+                  "value": "1280x720"
+                },
+                {
+                  "label": "1706x720 (64:27)",
+                  "value": "1706x720"
+                },
+                {
+                  "label": "1366x768 (16:9)",
+                  "value": "1366x768"
+                },
+                {
+                  "label": "1920x810 (64:27)",
+                  "value": "1920x810"
+                },
+                {
+                  "label": "1920x1080 (16:9)",
+                  "value": "1920x1080"
+                },
+                {
+                  "label": "2560x1080 (64:27)",
+                  "value": "2560x1080"
+                },
+                {
+                  "label": "2560x1440 (16:9)",
+                  "value": "2560x1440"
+                },
+                {
+                  "label": "3414x1440 (64:27)",
+                  "value": "3414x1440"
+                },
+                {
+                  "label": "3840x2160 (16:9)",
+                  "value": "3840x2160"
+                },
+                {
+                  "label": "4096x2160 (17:9)",
+                  "value": "4096x2160"
+                },
+                {
+                  "label": "5120x1440 (32:9)",
+                  "value": "5120x1440"
+                },
+                {
+                  "label": "5120x2160 (64:27)",
+                  "value": "5120x2160"
+                },
+                {
+                  "label": "7680x3240 (64:27)",
+                  "value": "7680x3240"
+                },
+                {
+                  "label": "7680x4320 (16:9)",
+                  "value": "7680x4320"
+                },
+                {
+                  "label": "7680x2160 (32:9)",
+                  "value": "7680x2160"
+                },
+                {
+                  "label": "10240x4320 (64:27)",
+                  "value": "10240x4320"
+                }
+              ],
+              "restart": true
+            },
+            {
+              "key": "mupen64plus-EnableNativeResFactor",
+              "label": "settings_mupen64plus_enablenativeresfactor",
+              "type": "enum",
+              "default": "0",
+              "choices": [
+                {
+                  "label": "Disabled",
+                  "value": "0"
+                },
+                {
+                  "label": "1x",
+                  "value": "1"
+                },
+                {
+                  "label": "2x",
+                  "value": "2"
+                },
+                {
+                  "label": "3x",
+                  "value": "3"
+                },
+                {
+                  "label": "4x",
+                  "value": "4"
+                },
+                {
+                  "label": "5x",
+                  "value": "5"
+                },
+                {
+                  "label": "6x",
+                  "value": "6"
+                },
+                {
+                  "label": "7x",
+                  "value": "7"
+                },
+                {
+                  "label": "8x",
+                  "value": "8"
+                }
+              ],
+              "restart": true
+            }
+          ]
+        },
+        {
+          "title": "settings_mupen64plus_section_filtering",
+          "options": [
+            {
+              "key": "mupen64plus-BilinearMode",
+              "label": "settings_mupen64plus_bilinearmode",
+              "type": "enum",
+              "default": "standard",
+              "choices": [
+                {
+                  "label": "3point",
+                  "value": "3point"
+                },
+                {
+                  "label": "standard",
+                  "value": "standard"
+                }
+              ],
+              "restart": true
+            },
+            {
+              "key": "mupen64plus-HybridFilter",
+              "label": "settings_mupen64plus_hybridfilter",
+              "type": "bool",
+              "default": "True",
+              "restart": true
+            },
+            {
+              "key": "mupen64plus-MultiSampling",
+              "label": "settings_mupen64plus_multisampling",
+              "type": "enum",
+              "default": "0",
+              "choices": [
+                {
+                  "label": "0",
+                  "value": "0"
+                },
+                {
+                  "label": "2",
+                  "value": "2"
+                },
+                {
+                  "label": "4",
+                  "value": "4"
+                },
+                {
+                  "label": "8",
+                  "value": "8"
+                },
+                {
+                  "label": "16",
+                  "value": "16"
+                }
+              ],
+              "restart": true
+            },
+            {
+              "key": "mupen64plus-FXAA",
+              "label": "settings_mupen64plus_fxaa",
+              "type": "enum",
+              "default": "0",
+              "choices": [
+                {
+                  "label": "0",
+                  "value": "0"
+                },
+                {
+                  "label": "1",
+                  "value": "1"
+                }
+              ],
+              "restart": true
+            },
+            {
+              "key": "mupen64plus-DitheringPattern",
+              "label": "settings_mupen64plus_ditheringpattern",
+              "type": "bool",
+              "default": "False",
+              "restart": true
+            },
+            {
+              "key": "mupen64plus-DitheringQuantization",
+              "label": "settings_mupen64plus_ditheringquantization",
+              "type": "bool",
+              "default": "False",
+              "restart": true
+            },
+            {
+              "key": "mupen64plus-RDRAMImageDitheringMode",
+              "label": "settings_mupen64plus_rdramimageditheringmode",
+              "type": "enum",
+              "default": "False",
+              "choices": [
+                {
+                  "label": "Disabled",
+                  "value": "False"
+                },
+                {
+                  "label": "Bayer",
+                  "value": "Bayer"
+                },
+                {
+                  "label": "Magic Square",
+                  "value": "MagicSquare"
+                },
+                {
+                  "label": "Blue Noise",
+                  "value": "BlueNoise"
+                }
+              ],
+              "restart": true
+            }
+          ]
+        },
+        {
+          "title": "settings_mupen64plus_section_framebuffer",
+          "options": [
+            {
+              "key": "mupen64plus-EnableFBEmulation",
+              "label": "settings_mupen64plus_enablefbemulation",
+              "type": "bool",
+              "default": "True",
+              "restart": true
+            },
+            {
+              "key": "mupen64plus-EnableCopyColorToRDRAM",
+              "label": "settings_mupen64plus_enablecopycolortordram",
+              "type": "enum",
+              "default": "Async",
+              "choices": [
+                {
+                  "label": "Off",
+                  "value": "Off"
+                },
+                {
+                  "label": "Sync",
+                  "value": "Sync"
+                },
+                {
+                  "label": "DoubleBuffer",
+                  "value": "Async"
+                },
+                {
+                  "label": "TripleBuffer",
+                  "value": "TripleBuffer"
+                }
+              ],
+              "restart": true
+            },
+            {
+              "key": "mupen64plus-EnableCopyColorFromRDRAM",
+              "label": "settings_mupen64plus_enablecopycolorfromrdram",
+              "type": "bool",
+              "default": "False",
+              "restart": true
+            },
+            {
+              "key": "mupen64plus-EnableCopyDepthToRDRAM",
+              "label": "settings_mupen64plus_enablecopydepthtordram",
+              "type": "enum",
+              "default": "Software",
+              "choices": [
+                {
+                  "label": "Off",
+                  "value": "Off"
+                },
+                {
+                  "label": "Software",
+                  "value": "Software"
+                },
+                {
+                  "label": "FromMem",
+                  "value": "FromMem"
+                }
+              ],
+              "restart": true
+            },
+            {
+              "key": "mupen64plus-EnableCopyAuxToRDRAM",
+              "label": "settings_mupen64plus_enablecopyauxtordram",
+              "type": "bool",
+              "default": "False",
+              "restart": true
+            },
+            {
+              "key": "mupen64plus-EnableN64DepthCompare",
+              "label": "settings_mupen64plus_enablen64depthcompare",
+              "type": "enum",
+              "default": "False",
+              "choices": [
+                {
+                  "label": "Off",
+                  "value": "False"
+                },
+                {
+                  "label": "Fast",
+                  "value": "True"
+                },
+                {
+                  "label": "Compatible",
+                  "value": "Compatible"
+                }
+              ],
+              "restart": true
+            },
+            {
+              "key": "mupen64plus-BackgroundMode",
+              "label": "settings_mupen64plus_backgroundmode",
+              "type": "enum",
+              "default": "OnePiece",
+              "choices": [
+                {
+                  "label": "Stripped",
+                  "value": "Stripped"
+                },
+                {
+                  "label": "OnePiece",
+                  "value": "OnePiece"
+                }
+              ],
+              "restart": true
+            }
+          ]
+        },
+        {
+          "title": "settings_mupen64plus_section_accuracy",
+          "options": [
+            {
+              "key": "mupen64plus-EnableLODEmulation",
+              "label": "settings_mupen64plus_enablelodemulation",
+              "type": "bool",
+              "default": "True",
+              "restart": true
+            },
+            {
+              "key": "mupen64plus-EnableHWLighting",
+              "label": "settings_mupen64plus_enablehwlighting",
+              "type": "bool",
+              "default": "False",
+              "restart": true
+            },
+            {
+              "key": "mupen64plus-CorrectTexrectCoords",
+              "label": "settings_mupen64plus_correcttexrectcoords",
+              "type": "enum",
+              "default": "Off",
+              "choices": [
+                {
+                  "label": "Off",
+                  "value": "Off"
+                },
+                {
+                  "label": "Auto",
+                  "value": "Auto"
+                },
+                {
+                  "label": "Force",
+                  "value": "Force"
+                }
+              ],
+              "restart": true
+            },
+            {
+              "key": "mupen64plus-EnableNativeResTexrects",
+              "label": "settings_mupen64plus_enablenativerestexrects",
+              "type": "enum",
+              "default": "Disabled",
+              "choices": [
+                {
+                  "label": "Disabled",
+                  "value": "Disabled"
+                },
+                {
+                  "label": "Unoptimized",
+                  "value": "Unoptimized"
+                },
+                {
+                  "label": "Optimized",
+                  "value": "Optimized"
+                }
+              ],
+              "restart": true
+            },
+            {
+              "key": "mupen64plus-EnableInaccurateTextureCoordinates",
+              "label": "settings_mupen64plus_enableinaccuratetexturecoordinates",
+              "type": "bool",
+              "default": "False",
+              "restart": true
+            },
+            {
+              "key": "mupen64plus-EnableTexCoordBounds",
+              "label": "settings_mupen64plus_enabletexcoordbounds",
+              "type": "bool",
+              "default": "False",
+              "restart": true
+            },
+            {
+              "key": "mupen64plus-EnableLegacyBlending",
+              "label": "settings_mupen64plus_enablelegacyblending",
+              "type": "bool",
+              "default": "False",
+              "restart": true
+            },
+            {
+              "key": "mupen64plus-EnableFragmentDepthWrite",
+              "label": "settings_mupen64plus_enablefragmentdepthwrite",
+              "type": "bool",
+              "default": "True",
+              "restart": true
+            },
+            {
+              "key": "mupen64plus-EnableShadersStorage",
+              "label": "settings_mupen64plus_enableshadersstorage",
+              "type": "bool",
+              "default": "True",
+              "restart": true
+            },
+            {
+              "key": "mupen64plus-GLideN64IniBehaviour",
+              "label": "settings_mupen64plus_gliden64inibehaviour",
+              "type": "enum",
+              "default": "late",
+              "choices": [
+                {
+                  "label": "Prioritize INI over Core Options",
+                  "value": "late"
+                },
+                {
+                  "label": "Prioritize Core Options over INI",
+                  "value": "early"
+                },
+                {
+                  "label": "Disable INI",
+                  "value": "disabled"
+                }
+              ],
+              "restart": true
+            }
+          ]
+        },
+        {
+          "title": "settings_mupen64plus_section_overscan",
+          "options": [
+            {
+              "key": "mupen64plus-EnableOverscan",
+              "label": "settings_mupen64plus_enableoverscan",
+              "type": "enum",
+              "default": "Enabled",
+              "choices": [
+                {
+                  "label": "Disabled",
+                  "value": "Disabled"
+                },
+                {
+                  "label": "Enabled",
+                  "value": "Enabled"
+                }
+              ],
+              "restart": true
+            },
+            {
+              "key": "mupen64plus-OverscanTop",
+              "label": "settings_mupen64plus_overscantop",
+              "type": "enum",
+              "default": "0",
+              "choices": [
+                {
+                  "label": "0",
+                  "value": "0"
+                },
+                {
+                  "label": "1",
+                  "value": "1"
+                },
+                {
+                  "label": "2",
+                  "value": "2"
+                },
+                {
+                  "label": "3",
+                  "value": "3"
+                },
+                {
+                  "label": "4",
+                  "value": "4"
+                },
+                {
+                  "label": "5",
+                  "value": "5"
+                },
+                {
+                  "label": "6",
+                  "value": "6"
+                },
+                {
+                  "label": "7",
+                  "value": "7"
+                },
+                {
+                  "label": "8",
+                  "value": "8"
+                },
+                {
+                  "label": "9",
+                  "value": "9"
+                },
+                {
+                  "label": "10",
+                  "value": "10"
+                },
+                {
+                  "label": "11",
+                  "value": "11"
+                },
+                {
+                  "label": "12",
+                  "value": "12"
+                },
+                {
+                  "label": "13",
+                  "value": "13"
+                },
+                {
+                  "label": "14",
+                  "value": "14"
+                },
+                {
+                  "label": "15",
+                  "value": "15"
+                },
+                {
+                  "label": "16",
+                  "value": "16"
+                },
+                {
+                  "label": "17",
+                  "value": "17"
+                },
+                {
+                  "label": "18",
+                  "value": "18"
+                },
+                {
+                  "label": "19",
+                  "value": "19"
+                },
+                {
+                  "label": "20",
+                  "value": "20"
+                },
+                {
+                  "label": "21",
+                  "value": "21"
+                },
+                {
+                  "label": "22",
+                  "value": "22"
+                },
+                {
+                  "label": "23",
+                  "value": "23"
+                },
+                {
+                  "label": "24",
+                  "value": "24"
+                },
+                {
+                  "label": "25",
+                  "value": "25"
+                },
+                {
+                  "label": "26",
+                  "value": "26"
+                },
+                {
+                  "label": "27",
+                  "value": "27"
+                },
+                {
+                  "label": "28",
+                  "value": "28"
+                },
+                {
+                  "label": "29",
+                  "value": "29"
+                },
+                {
+                  "label": "30",
+                  "value": "30"
+                },
+                {
+                  "label": "31",
+                  "value": "31"
+                },
+                {
+                  "label": "32",
+                  "value": "32"
+                },
+                {
+                  "label": "33",
+                  "value": "33"
+                },
+                {
+                  "label": "34",
+                  "value": "34"
+                },
+                {
+                  "label": "35",
+                  "value": "35"
+                },
+                {
+                  "label": "36",
+                  "value": "36"
+                },
+                {
+                  "label": "37",
+                  "value": "37"
+                },
+                {
+                  "label": "38",
+                  "value": "38"
+                },
+                {
+                  "label": "39",
+                  "value": "39"
+                },
+                {
+                  "label": "40",
+                  "value": "40"
+                },
+                {
+                  "label": "41",
+                  "value": "41"
+                },
+                {
+                  "label": "42",
+                  "value": "42"
+                },
+                {
+                  "label": "43",
+                  "value": "43"
+                },
+                {
+                  "label": "44",
+                  "value": "44"
+                },
+                {
+                  "label": "45",
+                  "value": "45"
+                },
+                {
+                  "label": "46",
+                  "value": "46"
+                },
+                {
+                  "label": "47",
+                  "value": "47"
+                },
+                {
+                  "label": "48",
+                  "value": "48"
+                },
+                {
+                  "label": "49",
+                  "value": "49"
+                },
+                {
+                  "label": "50",
+                  "value": "50"
+                }
+              ],
+              "restart": true
+            },
+            {
+              "key": "mupen64plus-OverscanLeft",
+              "label": "settings_mupen64plus_overscanleft",
+              "type": "enum",
+              "default": "0",
+              "choices": [
+                {
+                  "label": "0",
+                  "value": "0"
+                },
+                {
+                  "label": "1",
+                  "value": "1"
+                },
+                {
+                  "label": "2",
+                  "value": "2"
+                },
+                {
+                  "label": "3",
+                  "value": "3"
+                },
+                {
+                  "label": "4",
+                  "value": "4"
+                },
+                {
+                  "label": "5",
+                  "value": "5"
+                },
+                {
+                  "label": "6",
+                  "value": "6"
+                },
+                {
+                  "label": "7",
+                  "value": "7"
+                },
+                {
+                  "label": "8",
+                  "value": "8"
+                },
+                {
+                  "label": "9",
+                  "value": "9"
+                },
+                {
+                  "label": "10",
+                  "value": "10"
+                },
+                {
+                  "label": "11",
+                  "value": "11"
+                },
+                {
+                  "label": "12",
+                  "value": "12"
+                },
+                {
+                  "label": "13",
+                  "value": "13"
+                },
+                {
+                  "label": "14",
+                  "value": "14"
+                },
+                {
+                  "label": "15",
+                  "value": "15"
+                },
+                {
+                  "label": "16",
+                  "value": "16"
+                },
+                {
+                  "label": "17",
+                  "value": "17"
+                },
+                {
+                  "label": "18",
+                  "value": "18"
+                },
+                {
+                  "label": "19",
+                  "value": "19"
+                },
+                {
+                  "label": "20",
+                  "value": "20"
+                },
+                {
+                  "label": "21",
+                  "value": "21"
+                },
+                {
+                  "label": "22",
+                  "value": "22"
+                },
+                {
+                  "label": "23",
+                  "value": "23"
+                },
+                {
+                  "label": "24",
+                  "value": "24"
+                },
+                {
+                  "label": "25",
+                  "value": "25"
+                },
+                {
+                  "label": "26",
+                  "value": "26"
+                },
+                {
+                  "label": "27",
+                  "value": "27"
+                },
+                {
+                  "label": "28",
+                  "value": "28"
+                },
+                {
+                  "label": "29",
+                  "value": "29"
+                },
+                {
+                  "label": "30",
+                  "value": "30"
+                },
+                {
+                  "label": "31",
+                  "value": "31"
+                },
+                {
+                  "label": "32",
+                  "value": "32"
+                },
+                {
+                  "label": "33",
+                  "value": "33"
+                },
+                {
+                  "label": "34",
+                  "value": "34"
+                },
+                {
+                  "label": "35",
+                  "value": "35"
+                },
+                {
+                  "label": "36",
+                  "value": "36"
+                },
+                {
+                  "label": "37",
+                  "value": "37"
+                },
+                {
+                  "label": "38",
+                  "value": "38"
+                },
+                {
+                  "label": "39",
+                  "value": "39"
+                },
+                {
+                  "label": "40",
+                  "value": "40"
+                },
+                {
+                  "label": "41",
+                  "value": "41"
+                },
+                {
+                  "label": "42",
+                  "value": "42"
+                },
+                {
+                  "label": "43",
+                  "value": "43"
+                },
+                {
+                  "label": "44",
+                  "value": "44"
+                },
+                {
+                  "label": "45",
+                  "value": "45"
+                },
+                {
+                  "label": "46",
+                  "value": "46"
+                },
+                {
+                  "label": "47",
+                  "value": "47"
+                },
+                {
+                  "label": "48",
+                  "value": "48"
+                },
+                {
+                  "label": "49",
+                  "value": "49"
+                },
+                {
+                  "label": "50",
+                  "value": "50"
+                }
+              ],
+              "restart": true
+            },
+            {
+              "key": "mupen64plus-OverscanRight",
+              "label": "settings_mupen64plus_overscanright",
+              "type": "enum",
+              "default": "0",
+              "choices": [
+                {
+                  "label": "0",
+                  "value": "0"
+                },
+                {
+                  "label": "1",
+                  "value": "1"
+                },
+                {
+                  "label": "2",
+                  "value": "2"
+                },
+                {
+                  "label": "3",
+                  "value": "3"
+                },
+                {
+                  "label": "4",
+                  "value": "4"
+                },
+                {
+                  "label": "5",
+                  "value": "5"
+                },
+                {
+                  "label": "6",
+                  "value": "6"
+                },
+                {
+                  "label": "7",
+                  "value": "7"
+                },
+                {
+                  "label": "8",
+                  "value": "8"
+                },
+                {
+                  "label": "9",
+                  "value": "9"
+                },
+                {
+                  "label": "10",
+                  "value": "10"
+                },
+                {
+                  "label": "11",
+                  "value": "11"
+                },
+                {
+                  "label": "12",
+                  "value": "12"
+                },
+                {
+                  "label": "13",
+                  "value": "13"
+                },
+                {
+                  "label": "14",
+                  "value": "14"
+                },
+                {
+                  "label": "15",
+                  "value": "15"
+                },
+                {
+                  "label": "16",
+                  "value": "16"
+                },
+                {
+                  "label": "17",
+                  "value": "17"
+                },
+                {
+                  "label": "18",
+                  "value": "18"
+                },
+                {
+                  "label": "19",
+                  "value": "19"
+                },
+                {
+                  "label": "20",
+                  "value": "20"
+                },
+                {
+                  "label": "21",
+                  "value": "21"
+                },
+                {
+                  "label": "22",
+                  "value": "22"
+                },
+                {
+                  "label": "23",
+                  "value": "23"
+                },
+                {
+                  "label": "24",
+                  "value": "24"
+                },
+                {
+                  "label": "25",
+                  "value": "25"
+                },
+                {
+                  "label": "26",
+                  "value": "26"
+                },
+                {
+                  "label": "27",
+                  "value": "27"
+                },
+                {
+                  "label": "28",
+                  "value": "28"
+                },
+                {
+                  "label": "29",
+                  "value": "29"
+                },
+                {
+                  "label": "30",
+                  "value": "30"
+                },
+                {
+                  "label": "31",
+                  "value": "31"
+                },
+                {
+                  "label": "32",
+                  "value": "32"
+                },
+                {
+                  "label": "33",
+                  "value": "33"
+                },
+                {
+                  "label": "34",
+                  "value": "34"
+                },
+                {
+                  "label": "35",
+                  "value": "35"
+                },
+                {
+                  "label": "36",
+                  "value": "36"
+                },
+                {
+                  "label": "37",
+                  "value": "37"
+                },
+                {
+                  "label": "38",
+                  "value": "38"
+                },
+                {
+                  "label": "39",
+                  "value": "39"
+                },
+                {
+                  "label": "40",
+                  "value": "40"
+                },
+                {
+                  "label": "41",
+                  "value": "41"
+                },
+                {
+                  "label": "42",
+                  "value": "42"
+                },
+                {
+                  "label": "43",
+                  "value": "43"
+                },
+                {
+                  "label": "44",
+                  "value": "44"
+                },
+                {
+                  "label": "45",
+                  "value": "45"
+                },
+                {
+                  "label": "46",
+                  "value": "46"
+                },
+                {
+                  "label": "47",
+                  "value": "47"
+                },
+                {
+                  "label": "48",
+                  "value": "48"
+                },
+                {
+                  "label": "49",
+                  "value": "49"
+                },
+                {
+                  "label": "50",
+                  "value": "50"
+                }
+              ],
+              "restart": true
+            },
+            {
+              "key": "mupen64plus-OverscanBottom",
+              "label": "settings_mupen64plus_overscanbottom",
+              "type": "enum",
+              "default": "0",
+              "choices": [
+                {
+                  "label": "0",
+                  "value": "0"
+                },
+                {
+                  "label": "1",
+                  "value": "1"
+                },
+                {
+                  "label": "2",
+                  "value": "2"
+                },
+                {
+                  "label": "3",
+                  "value": "3"
+                },
+                {
+                  "label": "4",
+                  "value": "4"
+                },
+                {
+                  "label": "5",
+                  "value": "5"
+                },
+                {
+                  "label": "6",
+                  "value": "6"
+                },
+                {
+                  "label": "7",
+                  "value": "7"
+                },
+                {
+                  "label": "8",
+                  "value": "8"
+                },
+                {
+                  "label": "9",
+                  "value": "9"
+                },
+                {
+                  "label": "10",
+                  "value": "10"
+                },
+                {
+                  "label": "11",
+                  "value": "11"
+                },
+                {
+                  "label": "12",
+                  "value": "12"
+                },
+                {
+                  "label": "13",
+                  "value": "13"
+                },
+                {
+                  "label": "14",
+                  "value": "14"
+                },
+                {
+                  "label": "15",
+                  "value": "15"
+                },
+                {
+                  "label": "16",
+                  "value": "16"
+                },
+                {
+                  "label": "17",
+                  "value": "17"
+                },
+                {
+                  "label": "18",
+                  "value": "18"
+                },
+                {
+                  "label": "19",
+                  "value": "19"
+                },
+                {
+                  "label": "20",
+                  "value": "20"
+                },
+                {
+                  "label": "21",
+                  "value": "21"
+                },
+                {
+                  "label": "22",
+                  "value": "22"
+                },
+                {
+                  "label": "23",
+                  "value": "23"
+                },
+                {
+                  "label": "24",
+                  "value": "24"
+                },
+                {
+                  "label": "25",
+                  "value": "25"
+                },
+                {
+                  "label": "26",
+                  "value": "26"
+                },
+                {
+                  "label": "27",
+                  "value": "27"
+                },
+                {
+                  "label": "28",
+                  "value": "28"
+                },
+                {
+                  "label": "29",
+                  "value": "29"
+                },
+                {
+                  "label": "30",
+                  "value": "30"
+                },
+                {
+                  "label": "31",
+                  "value": "31"
+                },
+                {
+                  "label": "32",
+                  "value": "32"
+                },
+                {
+                  "label": "33",
+                  "value": "33"
+                },
+                {
+                  "label": "34",
+                  "value": "34"
+                },
+                {
+                  "label": "35",
+                  "value": "35"
+                },
+                {
+                  "label": "36",
+                  "value": "36"
+                },
+                {
+                  "label": "37",
+                  "value": "37"
+                },
+                {
+                  "label": "38",
+                  "value": "38"
+                },
+                {
+                  "label": "39",
+                  "value": "39"
+                },
+                {
+                  "label": "40",
+                  "value": "40"
+                },
+                {
+                  "label": "41",
+                  "value": "41"
+                },
+                {
+                  "label": "42",
+                  "value": "42"
+                },
+                {
+                  "label": "43",
+                  "value": "43"
+                },
+                {
+                  "label": "44",
+                  "value": "44"
+                },
+                {
+                  "label": "45",
+                  "value": "45"
+                },
+                {
+                  "label": "46",
+                  "value": "46"
+                },
+                {
+                  "label": "47",
+                  "value": "47"
+                },
+                {
+                  "label": "48",
+                  "value": "48"
+                },
+                {
+                  "label": "49",
+                  "value": "49"
+                },
+                {
+                  "label": "50",
+                  "value": "50"
+                }
+              ],
+              "restart": true
+            }
+          ]
+        },
+        {
+          "title": "settings_mupen64plus_section_textures",
+          "options": [
+            {
+              "key": "mupen64plus-EnableTextureCache",
+              "label": "settings_mupen64plus_enabletexturecache",
+              "type": "bool",
+              "default": "True",
+              "restart": true
+            },
+            {
+              "key": "mupen64plus-MaxTxCacheSize",
+              "label": "settings_mupen64plus_maxtxcachesize",
+              "type": "enum",
+              "default": "4000",
+              "choices": [
+                {
+                  "label": "1500",
+                  "value": "1500"
+                },
+                {
+                  "label": "4000",
+                  "value": "4000"
+                },
+                {
+                  "label": "8000",
+                  "value": "8000"
+                }
+              ],
+              "restart": true
+            },
+            {
+              "key": "mupen64plus-txFilterMode",
+              "label": "settings_mupen64plus_txfiltermode",
+              "type": "enum",
+              "default": "None",
+              "choices": [
+                {
+                  "label": "None",
+                  "value": "None"
+                },
+                {
+                  "label": "Smooth filtering 1",
+                  "value": "Smooth filtering 1"
+                },
+                {
+                  "label": "Smooth filtering 2",
+                  "value": "Smooth filtering 2"
+                },
+                {
+                  "label": "Smooth filtering 3",
+                  "value": "Smooth filtering 3"
+                },
+                {
+                  "label": "Smooth filtering 4",
+                  "value": "Smooth filtering 4"
+                },
+                {
+                  "label": "Sharp filtering 1",
+                  "value": "Sharp filtering 1"
+                },
+                {
+                  "label": "Sharp filtering 2",
+                  "value": "Sharp filtering 2"
+                }
+              ],
+              "restart": true
+            },
+            {
+              "key": "mupen64plus-txEnhancementMode",
+              "label": "settings_mupen64plus_txenhancementmode",
+              "type": "enum",
+              "default": "None",
+              "choices": [
+                {
+                  "label": "None",
+                  "value": "None"
+                },
+                {
+                  "label": "As Is",
+                  "value": "As Is"
+                },
+                {
+                  "label": "X2",
+                  "value": "X2"
+                },
+                {
+                  "label": "X2SAI",
+                  "value": "X2SAI"
+                },
+                {
+                  "label": "HQ2X",
+                  "value": "HQ2X"
+                },
+                {
+                  "label": "HQ2XS",
+                  "value": "HQ2XS"
+                },
+                {
+                  "label": "LQ2X",
+                  "value": "LQ2X"
+                },
+                {
+                  "label": "LQ2XS",
+                  "value": "LQ2XS"
+                },
+                {
+                  "label": "HQ4X",
+                  "value": "HQ4X"
+                },
+                {
+                  "label": "2xBRZ",
+                  "value": "2xBRZ"
+                },
+                {
+                  "label": "3xBRZ",
+                  "value": "3xBRZ"
+                },
+                {
+                  "label": "4xBRZ",
+                  "value": "4xBRZ"
+                },
+                {
+                  "label": "5xBRZ",
+                  "value": "5xBRZ"
+                },
+                {
+                  "label": "6xBRZ",
+                  "value": "6xBRZ"
+                }
+              ],
+              "restart": true
+            },
+            {
+              "key": "mupen64plus-txFilterIgnoreBG",
+              "label": "settings_mupen64plus_txfilterignorebg",
+              "type": "bool",
+              "default": "True",
+              "restart": true
+            },
+            {
+              "key": "mupen64plus-txCacheCompression",
+              "label": "settings_mupen64plus_txcachecompression",
+              "type": "bool",
+              "default": "True",
+              "restart": true
+            },
+            {
+              "key": "mupen64plus-EnableEnhancedTextureStorage",
+              "label": "settings_mupen64plus_enableenhancedtexturestorage",
+              "type": "bool",
+              "default": "False",
+              "restart": true
+            },
+            {
+              "key": "mupen64plus-txHiresEnable",
+              "label": "settings_mupen64plus_txhiresenable",
+              "type": "bool",
+              "default": "False",
+              "restart": true
+            },
+            {
+              "key": "mupen64plus-txHiresFullAlphaChannel",
+              "label": "settings_mupen64plus_txhiresfullalphachannel",
+              "type": "bool",
+              "default": "False",
+              "restart": true
+            },
+            {
+              "key": "mupen64plus-EnableHiResAltCRC",
+              "label": "settings_mupen64plus_enablehiresaltcrc",
+              "type": "bool",
+              "default": "False",
+              "restart": true
+            },
+            {
+              "key": "mupen64plus-EnableEnhancedHighResStorage",
+              "label": "settings_mupen64plus_enableenhancedhighresstorage",
+              "type": "bool",
+              "default": "False",
+              "restart": true
+            },
+            {
+              "key": "mupen64plus-MaxHiResTxVramLimit",
+              "label": "settings_mupen64plus_maxhirestxvramlimit",
+              "type": "enum",
+              "default": "0",
+              "choices": [
+                {
+                  "label": "0",
+                  "value": "0"
+                },
+                {
+                  "label": "500",
+                  "value": "500"
+                },
+                {
+                  "label": "1000",
+                  "value": "1000"
+                },
+                {
+                  "label": "1500",
+                  "value": "1500"
+                },
+                {
+                  "label": "2000",
+                  "value": "2000"
+                },
+                {
+                  "label": "2500",
+                  "value": "2500"
+                },
+                {
+                  "label": "3000",
+                  "value": "3000"
+                },
+                {
+                  "label": "3500",
+                  "value": "3500"
+                },
+                {
+                  "label": "4000",
+                  "value": "4000"
+                }
+              ],
+              "restart": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "settings_mupen64plus_tab_parallel",
+      "sections": [
+        {
+          "title": "settings_mupen64plus_section_resolution",
+          "options": [
+            {
+              "key": "mupen64plus-parallel-rdp-upscaling",
+              "label": "settings_mupen64plus_parallel_rdp_upscaling",
+              "type": "enum",
+              "default": "1x",
+              "choices": [
+                {
+                  "label": "1x",
+                  "value": "1x"
+                },
+                {
+                  "label": "2x",
+                  "value": "2x"
+                },
+                {
+                  "label": "4x",
+                  "value": "4x"
+                },
+                {
+                  "label": "8x",
+                  "value": "8x"
+                }
+              ],
+              "restart": true
+            },
+            {
+              "key": "mupen64plus-parallel-rdp-downscaling",
+              "label": "settings_mupen64plus_parallel_rdp_downscaling",
+              "type": "enum",
+              "default": "disable",
+              "choices": [
+                {
+                  "label": "disable",
+                  "value": "disable"
+                },
+                {
+                  "label": "1/2",
+                  "value": "1/2"
+                },
+                {
+                  "label": "1/4",
+                  "value": "1/4"
+                },
+                {
+                  "label": "1/8",
+                  "value": "1/8"
+                }
+              ]
+            },
+            {
+              "key": "mupen64plus-parallel-rdp-super-sampled-read-back",
+              "label": "settings_mupen64plus_parallel_rdp_super_sampled_read_back",
+              "type": "bool",
+              "default": "False",
+              "restart": true
+            },
+            {
+              "key": "mupen64plus-parallel-rdp-super-sampled-read-back-dither",
+              "label": "settings_mupen64plus_parallel_rdp_super_sampled_read_back_dither",
+              "type": "bool",
+              "default": "True",
+              "restart": true
+            },
+            {
+              "key": "mupen64plus-parallel-rdp-overscan",
+              "label": "settings_mupen64plus_parallel_rdp_overscan",
+              "type": "enum",
+              "default": "0",
+              "choices": [
+                {
+                  "label": "0",
+                  "value": "0"
+                },
+                {
+                  "label": "2",
+                  "value": "2"
+                },
+                {
+                  "label": "4",
+                  "value": "4"
+                },
+                {
+                  "label": "6",
+                  "value": "6"
+                },
+                {
+                  "label": "8",
+                  "value": "8"
+                },
+                {
+                  "label": "10",
+                  "value": "10"
+                },
+                {
+                  "label": "12",
+                  "value": "12"
+                },
+                {
+                  "label": "14",
+                  "value": "14"
+                },
+                {
+                  "label": "16",
+                  "value": "16"
+                },
+                {
+                  "label": "18",
+                  "value": "18"
+                },
+                {
+                  "label": "20",
+                  "value": "20"
+                },
+                {
+                  "label": "22",
+                  "value": "22"
+                },
+                {
+                  "label": "24",
+                  "value": "24"
+                },
+                {
+                  "label": "26",
+                  "value": "26"
+                },
+                {
+                  "label": "28",
+                  "value": "28"
+                },
+                {
+                  "label": "30",
+                  "value": "30"
+                },
+                {
+                  "label": "32",
+                  "value": "32"
+                },
+                {
+                  "label": "34",
+                  "value": "34"
+                },
+                {
+                  "label": "36",
+                  "value": "36"
+                },
+                {
+                  "label": "38",
+                  "value": "38"
+                },
+                {
+                  "label": "40",
+                  "value": "40"
+                },
+                {
+                  "label": "42",
+                  "value": "42"
+                },
+                {
+                  "label": "44",
+                  "value": "44"
+                },
+                {
+                  "label": "46",
+                  "value": "46"
+                },
+                {
+                  "label": "48",
+                  "value": "48"
+                },
+                {
+                  "label": "50",
+                  "value": "50"
+                },
+                {
+                  "label": "52",
+                  "value": "52"
+                },
+                {
+                  "label": "54",
+                  "value": "54"
+                },
+                {
+                  "label": "56",
+                  "value": "56"
+                },
+                {
+                  "label": "58",
+                  "value": "58"
+                },
+                {
+                  "label": "60",
+                  "value": "60"
+                },
+                {
+                  "label": "62",
+                  "value": "62"
+                },
+                {
+                  "label": "64",
+                  "value": "64"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "title": "settings_mupen64plus_section_vi",
+          "options": [
+            {
+              "key": "mupen64plus-parallel-rdp-vi-aa",
+              "label": "settings_mupen64plus_parallel_rdp_vi_aa",
+              "type": "bool",
+              "default": "True"
+            },
+            {
+              "key": "mupen64plus-parallel-rdp-vi-bilinear",
+              "label": "settings_mupen64plus_parallel_rdp_vi_bilinear",
+              "type": "bool",
+              "default": "True"
+            },
+            {
+              "key": "mupen64plus-parallel-rdp-divot-filter",
+              "label": "settings_mupen64plus_parallel_rdp_divot_filter",
+              "type": "bool",
+              "default": "True"
+            },
+            {
+              "key": "mupen64plus-parallel-rdp-gamma-dither",
+              "label": "settings_mupen64plus_parallel_rdp_gamma_dither",
+              "type": "bool",
+              "default": "True"
+            },
+            {
+              "key": "mupen64plus-parallel-rdp-dither-filter",
+              "label": "settings_mupen64plus_parallel_rdp_dither_filter",
+              "type": "bool",
+              "default": "True"
+            },
+            {
+              "key": "mupen64plus-parallel-rdp-deinterlace-method",
+              "label": "settings_mupen64plus_parallel_rdp_deinterlace_method",
+              "type": "enum",
+              "default": "Bob",
+              "choices": [
+                {
+                  "label": "Bob",
+                  "value": "Bob"
+                },
+                {
+                  "label": "Weave",
+                  "value": "Weave"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "title": "settings_mupen64plus_section_accuracy",
+          "options": [
+            {
+              "key": "mupen64plus-parallel-rdp-synchronous",
+              "label": "settings_mupen64plus_parallel_rdp_synchronous",
+              "type": "bool",
+              "default": "True"
+            },
+            {
+              "key": "mupen64plus-parallel-rdp-native-texture-lod",
+              "label": "settings_mupen64plus_parallel_rdp_native_texture_lod",
+              "type": "bool",
+              "default": "False"
+            },
+            {
+              "key": "mupen64plus-parallel-rdp-native-tex-rect",
+              "label": "settings_mupen64plus_parallel_rdp_native_tex_rect",
+              "type": "bool",
+              "default": "True"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "settings_mupen64plus_tab_controls",
+      "sections": [
+        {
+          "title": "settings_mupen64plus_section_stick",
+          "options": [
+            {
+              "key": "mupen64plus-astick-deadzone",
+              "label": "settings_mupen64plus_astick_deadzone",
+              "type": "enum",
+              "default": "15",
+              "choices": [
+                {
+                  "label": "0",
+                  "value": "0"
+                },
+                {
+                  "label": "5",
+                  "value": "5"
+                },
+                {
+                  "label": "10",
+                  "value": "10"
+                },
+                {
+                  "label": "15",
+                  "value": "15"
+                },
+                {
+                  "label": "20",
+                  "value": "20"
+                },
+                {
+                  "label": "25",
+                  "value": "25"
+                },
+                {
+                  "label": "30",
+                  "value": "30"
+                }
+              ]
+            },
+            {
+              "key": "mupen64plus-astick-sensitivity",
+              "label": "settings_mupen64plus_astick_sensitivity",
+              "type": "enum",
+              "default": "100",
+              "choices": [
+                {
+                  "label": "50",
+                  "value": "50"
+                },
+                {
+                  "label": "55",
+                  "value": "55"
+                },
+                {
+                  "label": "60",
+                  "value": "60"
+                },
+                {
+                  "label": "65",
+                  "value": "65"
+                },
+                {
+                  "label": "70",
+                  "value": "70"
+                },
+                {
+                  "label": "75",
+                  "value": "75"
+                },
+                {
+                  "label": "80",
+                  "value": "80"
+                },
+                {
+                  "label": "85",
+                  "value": "85"
+                },
+                {
+                  "label": "90",
+                  "value": "90"
+                },
+                {
+                  "label": "95",
+                  "value": "95"
+                },
+                {
+                  "label": "100",
+                  "value": "100"
+                },
+                {
+                  "label": "105",
+                  "value": "105"
+                },
+                {
+                  "label": "110",
+                  "value": "110"
+                },
+                {
+                  "label": "115",
+                  "value": "115"
+                },
+                {
+                  "label": "120",
+                  "value": "120"
+                },
+                {
+                  "label": "125",
+                  "value": "125"
+                },
+                {
+                  "label": "130",
+                  "value": "130"
+                },
+                {
+                  "label": "135",
+                  "value": "135"
+                },
+                {
+                  "label": "140",
+                  "value": "140"
+                },
+                {
+                  "label": "145",
+                  "value": "145"
+                },
+                {
+                  "label": "150",
+                  "value": "150"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "title": "settings_mupen64plus_section_paks",
+          "options": [
+            {
+              "key": "mupen64plus-pak1",
+              "label": "settings_mupen64plus_pak1",
+              "type": "enum",
+              "default": "memory",
+              "choices": [
+                {
+                  "label": "none",
+                  "value": "none"
+                },
+                {
+                  "label": "memory",
+                  "value": "memory"
+                },
+                {
+                  "label": "rumble",
+                  "value": "rumble"
+                },
+                {
+                  "label": "transfer",
+                  "value": "transfer"
+                }
+              ]
+            },
+            {
+              "key": "mupen64plus-pak2",
+              "label": "settings_mupen64plus_pak2",
+              "type": "enum",
+              "default": "none",
+              "choices": [
+                {
+                  "label": "none",
+                  "value": "none"
+                },
+                {
+                  "label": "memory",
+                  "value": "memory"
+                },
+                {
+                  "label": "rumble",
+                  "value": "rumble"
+                },
+                {
+                  "label": "transfer",
+                  "value": "transfer"
+                }
+              ]
+            },
+            {
+              "key": "mupen64plus-pak3",
+              "label": "settings_mupen64plus_pak3",
+              "type": "enum",
+              "default": "none",
+              "choices": [
+                {
+                  "label": "none",
+                  "value": "none"
+                },
+                {
+                  "label": "memory",
+                  "value": "memory"
+                },
+                {
+                  "label": "rumble",
+                  "value": "rumble"
+                },
+                {
+                  "label": "transfer",
+                  "value": "transfer"
+                }
+              ]
+            },
+            {
+              "key": "mupen64plus-pak4",
+              "label": "settings_mupen64plus_pak4",
+              "type": "enum",
+              "default": "none",
+              "choices": [
+                {
+                  "label": "none",
+                  "value": "none"
+                },
+                {
+                  "label": "memory",
+                  "value": "memory"
+                },
+                {
+                  "label": "rumble",
+                  "value": "rumble"
+                },
+                {
+                  "label": "transfer",
+                  "value": "transfer"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "title": "settings_mupen64plus_section_button_mapping",
+          "options": [
+            {
+              "key": "map_a",
+              "label": "settings_mupen64plus_map_a",
+              "type": "enum",
+              "default": "A",
+              "choices": [
+                {
+                  "label": "A",
+                  "value": "A"
+                },
+                {
+                  "label": "B",
+                  "value": "B"
+                },
+                {
+                  "label": "X",
+                  "value": "X"
+                },
+                {
+                  "label": "Y",
+                  "value": "Y"
+                },
+                {
+                  "label": "L",
+                  "value": "L"
+                },
+                {
+                  "label": "R",
+                  "value": "R"
+                },
+                {
+                  "label": "ZL",
+                  "value": "ZL"
+                },
+                {
+                  "label": "ZR",
+                  "value": "ZR"
+                },
+                {
+                  "label": "Plus",
+                  "value": "Plus"
+                },
+                {
+                  "label": "Minus",
+                  "value": "Minus"
+                },
+                {
+                  "label": "Left stick",
+                  "value": "StickL"
+                },
+                {
+                  "label": "Right stick",
+                  "value": "StickR"
+                },
+                {
+                  "label": "Up",
+                  "value": "Up"
+                },
+                {
+                  "label": "Down",
+                  "value": "Down"
+                },
+                {
+                  "label": "Left",
+                  "value": "Left"
+                },
+                {
+                  "label": "Right",
+                  "value": "Right"
+                },
+                {
+                  "label": "Disabled",
+                  "value": "None"
+                }
+              ]
+            },
+            {
+              "key": "map_b",
+              "label": "settings_mupen64plus_map_b",
+              "type": "enum",
+              "default": "B",
+              "choices": [
+                {
+                  "label": "A",
+                  "value": "A"
+                },
+                {
+                  "label": "B",
+                  "value": "B"
+                },
+                {
+                  "label": "X",
+                  "value": "X"
+                },
+                {
+                  "label": "Y",
+                  "value": "Y"
+                },
+                {
+                  "label": "L",
+                  "value": "L"
+                },
+                {
+                  "label": "R",
+                  "value": "R"
+                },
+                {
+                  "label": "ZL",
+                  "value": "ZL"
+                },
+                {
+                  "label": "ZR",
+                  "value": "ZR"
+                },
+                {
+                  "label": "Plus",
+                  "value": "Plus"
+                },
+                {
+                  "label": "Minus",
+                  "value": "Minus"
+                },
+                {
+                  "label": "Left stick",
+                  "value": "StickL"
+                },
+                {
+                  "label": "Right stick",
+                  "value": "StickR"
+                },
+                {
+                  "label": "Up",
+                  "value": "Up"
+                },
+                {
+                  "label": "Down",
+                  "value": "Down"
+                },
+                {
+                  "label": "Left",
+                  "value": "Left"
+                },
+                {
+                  "label": "Right",
+                  "value": "Right"
+                },
+                {
+                  "label": "Disabled",
+                  "value": "None"
+                }
+              ]
+            },
+            {
+              "key": "map_z",
+              "label": "settings_mupen64plus_map_z",
+              "type": "enum",
+              "default": "ZL",
+              "choices": [
+                {
+                  "label": "A",
+                  "value": "A"
+                },
+                {
+                  "label": "B",
+                  "value": "B"
+                },
+                {
+                  "label": "X",
+                  "value": "X"
+                },
+                {
+                  "label": "Y",
+                  "value": "Y"
+                },
+                {
+                  "label": "L",
+                  "value": "L"
+                },
+                {
+                  "label": "R",
+                  "value": "R"
+                },
+                {
+                  "label": "ZL",
+                  "value": "ZL"
+                },
+                {
+                  "label": "ZR",
+                  "value": "ZR"
+                },
+                {
+                  "label": "Plus",
+                  "value": "Plus"
+                },
+                {
+                  "label": "Minus",
+                  "value": "Minus"
+                },
+                {
+                  "label": "Left stick",
+                  "value": "StickL"
+                },
+                {
+                  "label": "Right stick",
+                  "value": "StickR"
+                },
+                {
+                  "label": "Up",
+                  "value": "Up"
+                },
+                {
+                  "label": "Down",
+                  "value": "Down"
+                },
+                {
+                  "label": "Left",
+                  "value": "Left"
+                },
+                {
+                  "label": "Right",
+                  "value": "Right"
+                },
+                {
+                  "label": "Disabled",
+                  "value": "None"
+                }
+              ]
+            },
+            {
+              "key": "map_z_alt",
+              "label": "settings_mupen64plus_map_z_alt",
+              "type": "enum",
+              "default": "ZR",
+              "choices": [
+                {
+                  "label": "A",
+                  "value": "A"
+                },
+                {
+                  "label": "B",
+                  "value": "B"
+                },
+                {
+                  "label": "X",
+                  "value": "X"
+                },
+                {
+                  "label": "Y",
+                  "value": "Y"
+                },
+                {
+                  "label": "L",
+                  "value": "L"
+                },
+                {
+                  "label": "R",
+                  "value": "R"
+                },
+                {
+                  "label": "ZL",
+                  "value": "ZL"
+                },
+                {
+                  "label": "ZR",
+                  "value": "ZR"
+                },
+                {
+                  "label": "Plus",
+                  "value": "Plus"
+                },
+                {
+                  "label": "Minus",
+                  "value": "Minus"
+                },
+                {
+                  "label": "Left stick",
+                  "value": "StickL"
+                },
+                {
+                  "label": "Right stick",
+                  "value": "StickR"
+                },
+                {
+                  "label": "Up",
+                  "value": "Up"
+                },
+                {
+                  "label": "Down",
+                  "value": "Down"
+                },
+                {
+                  "label": "Left",
+                  "value": "Left"
+                },
+                {
+                  "label": "Right",
+                  "value": "Right"
+                },
+                {
+                  "label": "Disabled",
+                  "value": "None"
+                }
+              ]
+            },
+            {
+              "key": "map_l",
+              "label": "settings_mupen64plus_map_l",
+              "type": "enum",
+              "default": "L",
+              "choices": [
+                {
+                  "label": "A",
+                  "value": "A"
+                },
+                {
+                  "label": "B",
+                  "value": "B"
+                },
+                {
+                  "label": "X",
+                  "value": "X"
+                },
+                {
+                  "label": "Y",
+                  "value": "Y"
+                },
+                {
+                  "label": "L",
+                  "value": "L"
+                },
+                {
+                  "label": "R",
+                  "value": "R"
+                },
+                {
+                  "label": "ZL",
+                  "value": "ZL"
+                },
+                {
+                  "label": "ZR",
+                  "value": "ZR"
+                },
+                {
+                  "label": "Plus",
+                  "value": "Plus"
+                },
+                {
+                  "label": "Minus",
+                  "value": "Minus"
+                },
+                {
+                  "label": "Left stick",
+                  "value": "StickL"
+                },
+                {
+                  "label": "Right stick",
+                  "value": "StickR"
+                },
+                {
+                  "label": "Up",
+                  "value": "Up"
+                },
+                {
+                  "label": "Down",
+                  "value": "Down"
+                },
+                {
+                  "label": "Left",
+                  "value": "Left"
+                },
+                {
+                  "label": "Right",
+                  "value": "Right"
+                },
+                {
+                  "label": "Disabled",
+                  "value": "None"
+                }
+              ]
+            },
+            {
+              "key": "map_r",
+              "label": "settings_mupen64plus_map_r",
+              "type": "enum",
+              "default": "R",
+              "choices": [
+                {
+                  "label": "A",
+                  "value": "A"
+                },
+                {
+                  "label": "B",
+                  "value": "B"
+                },
+                {
+                  "label": "X",
+                  "value": "X"
+                },
+                {
+                  "label": "Y",
+                  "value": "Y"
+                },
+                {
+                  "label": "L",
+                  "value": "L"
+                },
+                {
+                  "label": "R",
+                  "value": "R"
+                },
+                {
+                  "label": "ZL",
+                  "value": "ZL"
+                },
+                {
+                  "label": "ZR",
+                  "value": "ZR"
+                },
+                {
+                  "label": "Plus",
+                  "value": "Plus"
+                },
+                {
+                  "label": "Minus",
+                  "value": "Minus"
+                },
+                {
+                  "label": "Left stick",
+                  "value": "StickL"
+                },
+                {
+                  "label": "Right stick",
+                  "value": "StickR"
+                },
+                {
+                  "label": "Up",
+                  "value": "Up"
+                },
+                {
+                  "label": "Down",
+                  "value": "Down"
+                },
+                {
+                  "label": "Left",
+                  "value": "Left"
+                },
+                {
+                  "label": "Right",
+                  "value": "Right"
+                },
+                {
+                  "label": "Disabled",
+                  "value": "None"
+                }
+              ]
+            },
+            {
+              "key": "map_start",
+              "label": "settings_mupen64plus_map_start",
+              "type": "enum",
+              "default": "Plus",
+              "choices": [
+                {
+                  "label": "A",
+                  "value": "A"
+                },
+                {
+                  "label": "B",
+                  "value": "B"
+                },
+                {
+                  "label": "X",
+                  "value": "X"
+                },
+                {
+                  "label": "Y",
+                  "value": "Y"
+                },
+                {
+                  "label": "L",
+                  "value": "L"
+                },
+                {
+                  "label": "R",
+                  "value": "R"
+                },
+                {
+                  "label": "ZL",
+                  "value": "ZL"
+                },
+                {
+                  "label": "ZR",
+                  "value": "ZR"
+                },
+                {
+                  "label": "Plus",
+                  "value": "Plus"
+                },
+                {
+                  "label": "Minus",
+                  "value": "Minus"
+                },
+                {
+                  "label": "Left stick",
+                  "value": "StickL"
+                },
+                {
+                  "label": "Right stick",
+                  "value": "StickR"
+                },
+                {
+                  "label": "Up",
+                  "value": "Up"
+                },
+                {
+                  "label": "Down",
+                  "value": "Down"
+                },
+                {
+                  "label": "Left",
+                  "value": "Left"
+                },
+                {
+                  "label": "Right",
+                  "value": "Right"
+                },
+                {
+                  "label": "Disabled",
+                  "value": "None"
+                }
+              ]
+            },
+            {
+              "key": "map_c_up",
+              "label": "settings_mupen64plus_map_c_up",
+              "type": "enum",
+              "default": "None",
+              "choices": [
+                {
+                  "label": "A",
+                  "value": "A"
+                },
+                {
+                  "label": "B",
+                  "value": "B"
+                },
+                {
+                  "label": "X",
+                  "value": "X"
+                },
+                {
+                  "label": "Y",
+                  "value": "Y"
+                },
+                {
+                  "label": "L",
+                  "value": "L"
+                },
+                {
+                  "label": "R",
+                  "value": "R"
+                },
+                {
+                  "label": "ZL",
+                  "value": "ZL"
+                },
+                {
+                  "label": "ZR",
+                  "value": "ZR"
+                },
+                {
+                  "label": "Plus",
+                  "value": "Plus"
+                },
+                {
+                  "label": "Minus",
+                  "value": "Minus"
+                },
+                {
+                  "label": "Left stick",
+                  "value": "StickL"
+                },
+                {
+                  "label": "Right stick",
+                  "value": "StickR"
+                },
+                {
+                  "label": "Up",
+                  "value": "Up"
+                },
+                {
+                  "label": "Down",
+                  "value": "Down"
+                },
+                {
+                  "label": "Left",
+                  "value": "Left"
+                },
+                {
+                  "label": "Right",
+                  "value": "Right"
+                },
+                {
+                  "label": "Disabled",
+                  "value": "None"
+                }
+              ]
+            },
+            {
+              "key": "map_c_down",
+              "label": "settings_mupen64plus_map_c_down",
+              "type": "enum",
+              "default": "X",
+              "choices": [
+                {
+                  "label": "A",
+                  "value": "A"
+                },
+                {
+                  "label": "B",
+                  "value": "B"
+                },
+                {
+                  "label": "X",
+                  "value": "X"
+                },
+                {
+                  "label": "Y",
+                  "value": "Y"
+                },
+                {
+                  "label": "L",
+                  "value": "L"
+                },
+                {
+                  "label": "R",
+                  "value": "R"
+                },
+                {
+                  "label": "ZL",
+                  "value": "ZL"
+                },
+                {
+                  "label": "ZR",
+                  "value": "ZR"
+                },
+                {
+                  "label": "Plus",
+                  "value": "Plus"
+                },
+                {
+                  "label": "Minus",
+                  "value": "Minus"
+                },
+                {
+                  "label": "Left stick",
+                  "value": "StickL"
+                },
+                {
+                  "label": "Right stick",
+                  "value": "StickR"
+                },
+                {
+                  "label": "Up",
+                  "value": "Up"
+                },
+                {
+                  "label": "Down",
+                  "value": "Down"
+                },
+                {
+                  "label": "Left",
+                  "value": "Left"
+                },
+                {
+                  "label": "Right",
+                  "value": "Right"
+                },
+                {
+                  "label": "Disabled",
+                  "value": "None"
+                }
+              ]
+            },
+            {
+              "key": "map_c_left",
+              "label": "settings_mupen64plus_map_c_left",
+              "type": "enum",
+              "default": "Y",
+              "choices": [
+                {
+                  "label": "A",
+                  "value": "A"
+                },
+                {
+                  "label": "B",
+                  "value": "B"
+                },
+                {
+                  "label": "X",
+                  "value": "X"
+                },
+                {
+                  "label": "Y",
+                  "value": "Y"
+                },
+                {
+                  "label": "L",
+                  "value": "L"
+                },
+                {
+                  "label": "R",
+                  "value": "R"
+                },
+                {
+                  "label": "ZL",
+                  "value": "ZL"
+                },
+                {
+                  "label": "ZR",
+                  "value": "ZR"
+                },
+                {
+                  "label": "Plus",
+                  "value": "Plus"
+                },
+                {
+                  "label": "Minus",
+                  "value": "Minus"
+                },
+                {
+                  "label": "Left stick",
+                  "value": "StickL"
+                },
+                {
+                  "label": "Right stick",
+                  "value": "StickR"
+                },
+                {
+                  "label": "Up",
+                  "value": "Up"
+                },
+                {
+                  "label": "Down",
+                  "value": "Down"
+                },
+                {
+                  "label": "Left",
+                  "value": "Left"
+                },
+                {
+                  "label": "Right",
+                  "value": "Right"
+                },
+                {
+                  "label": "Disabled",
+                  "value": "None"
+                }
+              ]
+            },
+            {
+              "key": "map_c_right",
+              "label": "settings_mupen64plus_map_c_right",
+              "type": "enum",
+              "default": "None",
+              "choices": [
+                {
+                  "label": "A",
+                  "value": "A"
+                },
+                {
+                  "label": "B",
+                  "value": "B"
+                },
+                {
+                  "label": "X",
+                  "value": "X"
+                },
+                {
+                  "label": "Y",
+                  "value": "Y"
+                },
+                {
+                  "label": "L",
+                  "value": "L"
+                },
+                {
+                  "label": "R",
+                  "value": "R"
+                },
+                {
+                  "label": "ZL",
+                  "value": "ZL"
+                },
+                {
+                  "label": "ZR",
+                  "value": "ZR"
+                },
+                {
+                  "label": "Plus",
+                  "value": "Plus"
+                },
+                {
+                  "label": "Minus",
+                  "value": "Minus"
+                },
+                {
+                  "label": "Left stick",
+                  "value": "StickL"
+                },
+                {
+                  "label": "Right stick",
+                  "value": "StickR"
+                },
+                {
+                  "label": "Up",
+                  "value": "Up"
+                },
+                {
+                  "label": "Down",
+                  "value": "Down"
+                },
+                {
+                  "label": "Left",
+                  "value": "Left"
+                },
+                {
+                  "label": "Right",
+                  "value": "Right"
+                },
+                {
+                  "label": "Disabled",
+                  "value": "None"
+                }
+              ]
+            },
+            {
+              "key": "map_up",
+              "label": "settings_mupen64plus_map_up",
+              "type": "enum",
+              "default": "Up",
+              "choices": [
+                {
+                  "label": "A",
+                  "value": "A"
+                },
+                {
+                  "label": "B",
+                  "value": "B"
+                },
+                {
+                  "label": "X",
+                  "value": "X"
+                },
+                {
+                  "label": "Y",
+                  "value": "Y"
+                },
+                {
+                  "label": "L",
+                  "value": "L"
+                },
+                {
+                  "label": "R",
+                  "value": "R"
+                },
+                {
+                  "label": "ZL",
+                  "value": "ZL"
+                },
+                {
+                  "label": "ZR",
+                  "value": "ZR"
+                },
+                {
+                  "label": "Plus",
+                  "value": "Plus"
+                },
+                {
+                  "label": "Minus",
+                  "value": "Minus"
+                },
+                {
+                  "label": "Left stick",
+                  "value": "StickL"
+                },
+                {
+                  "label": "Right stick",
+                  "value": "StickR"
+                },
+                {
+                  "label": "Up",
+                  "value": "Up"
+                },
+                {
+                  "label": "Down",
+                  "value": "Down"
+                },
+                {
+                  "label": "Left",
+                  "value": "Left"
+                },
+                {
+                  "label": "Right",
+                  "value": "Right"
+                },
+                {
+                  "label": "Disabled",
+                  "value": "None"
+                }
+              ]
+            },
+            {
+              "key": "map_down",
+              "label": "settings_mupen64plus_map_down",
+              "type": "enum",
+              "default": "Down",
+              "choices": [
+                {
+                  "label": "A",
+                  "value": "A"
+                },
+                {
+                  "label": "B",
+                  "value": "B"
+                },
+                {
+                  "label": "X",
+                  "value": "X"
+                },
+                {
+                  "label": "Y",
+                  "value": "Y"
+                },
+                {
+                  "label": "L",
+                  "value": "L"
+                },
+                {
+                  "label": "R",
+                  "value": "R"
+                },
+                {
+                  "label": "ZL",
+                  "value": "ZL"
+                },
+                {
+                  "label": "ZR",
+                  "value": "ZR"
+                },
+                {
+                  "label": "Plus",
+                  "value": "Plus"
+                },
+                {
+                  "label": "Minus",
+                  "value": "Minus"
+                },
+                {
+                  "label": "Left stick",
+                  "value": "StickL"
+                },
+                {
+                  "label": "Right stick",
+                  "value": "StickR"
+                },
+                {
+                  "label": "Up",
+                  "value": "Up"
+                },
+                {
+                  "label": "Down",
+                  "value": "Down"
+                },
+                {
+                  "label": "Left",
+                  "value": "Left"
+                },
+                {
+                  "label": "Right",
+                  "value": "Right"
+                },
+                {
+                  "label": "Disabled",
+                  "value": "None"
+                }
+              ]
+            },
+            {
+              "key": "map_left",
+              "label": "settings_mupen64plus_map_left",
+              "type": "enum",
+              "default": "Left",
+              "choices": [
+                {
+                  "label": "A",
+                  "value": "A"
+                },
+                {
+                  "label": "B",
+                  "value": "B"
+                },
+                {
+                  "label": "X",
+                  "value": "X"
+                },
+                {
+                  "label": "Y",
+                  "value": "Y"
+                },
+                {
+                  "label": "L",
+                  "value": "L"
+                },
+                {
+                  "label": "R",
+                  "value": "R"
+                },
+                {
+                  "label": "ZL",
+                  "value": "ZL"
+                },
+                {
+                  "label": "ZR",
+                  "value": "ZR"
+                },
+                {
+                  "label": "Plus",
+                  "value": "Plus"
+                },
+                {
+                  "label": "Minus",
+                  "value": "Minus"
+                },
+                {
+                  "label": "Left stick",
+                  "value": "StickL"
+                },
+                {
+                  "label": "Right stick",
+                  "value": "StickR"
+                },
+                {
+                  "label": "Up",
+                  "value": "Up"
+                },
+                {
+                  "label": "Down",
+                  "value": "Down"
+                },
+                {
+                  "label": "Left",
+                  "value": "Left"
+                },
+                {
+                  "label": "Right",
+                  "value": "Right"
+                },
+                {
+                  "label": "Disabled",
+                  "value": "None"
+                }
+              ]
+            },
+            {
+              "key": "map_right",
+              "label": "settings_mupen64plus_map_right",
+              "type": "enum",
+              "default": "Right",
+              "choices": [
+                {
+                  "label": "A",
+                  "value": "A"
+                },
+                {
+                  "label": "B",
+                  "value": "B"
+                },
+                {
+                  "label": "X",
+                  "value": "X"
+                },
+                {
+                  "label": "Y",
+                  "value": "Y"
+                },
+                {
+                  "label": "L",
+                  "value": "L"
+                },
+                {
+                  "label": "R",
+                  "value": "R"
+                },
+                {
+                  "label": "ZL",
+                  "value": "ZL"
+                },
+                {
+                  "label": "ZR",
+                  "value": "ZR"
+                },
+                {
+                  "label": "Plus",
+                  "value": "Plus"
+                },
+                {
+                  "label": "Minus",
+                  "value": "Minus"
+                },
+                {
+                  "label": "Left stick",
+                  "value": "StickL"
+                },
+                {
+                  "label": "Right stick",
+                  "value": "StickR"
+                },
+                {
+                  "label": "Up",
+                  "value": "Up"
+                },
+                {
+                  "label": "Down",
+                  "value": "Down"
+                },
+                {
+                  "label": "Left",
+                  "value": "Left"
+                },
+                {
+                  "label": "Right",
+                  "value": "Right"
+                },
+                {
+                  "label": "Disabled",
+                  "value": "None"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

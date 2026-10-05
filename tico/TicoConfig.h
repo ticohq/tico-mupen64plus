@@ -5,14 +5,37 @@
 #include <string>
 
 namespace TicoConfig {
-    constexpr const char* TEST_ROM = "sdmc:/tico/roms/n64/mario.z64";
-    // without a launch argument, the first N64 ROM found here is loaded
-    constexpr const char* ROM_FALLBACK_DIR = "sdmc:/switch/mupen64plus/";
-
     constexpr const char* FONT_PATH = "romfs:/fonts/font.ttf";
-    constexpr const char* SYSTEM_PATH = "sdmc:/tico/system/n64/";
-    constexpr const char* SAVES_PATH = "sdmc:/tico/saves/n64/";
-    constexpr const char* STATES_PATH = "sdmc:/tico/states/n64/";
+
+    // Opt-in sampling profiler: create profile.on here (see TicoMain.cpp);
+    // profile.txt and stacks.txt are written beside it.
+    constexpr const char* PROFILE_DIR = "sdmc:/switch/mupen64plus/";
+
+    // Current console slug (n64, from argv[1])
+    inline std::string CURRENT_SLUG = "n64";
+
+    /// @brief Set the console being booted (n64)
+    inline void SetSlug(const std::string& slug) {
+        if (!slug.empty())
+            CURRENT_SLUG = slug;
+    }
+
+    /// Content directories, with a trailing slash. Tico's per-module Paths tab
+    /// stores custom roots as tico_{system,saves,states}_path in
+    /// mupen64plus.jsonc; empty or missing keys fall back to sdmc:/tico/<kind>/.
+    /// Like tico's own {saves}/{states}/{system}, the console slug is appended
+    /// to the root.
+    std::string SystemPath();
+    std::string SavesPath();
+    std::string StatesPath();
+
+    /// Create a directory and any missing parents.
+    void MakeDirs(const std::string& path);
+
+    /// @brief RetroAchievements console ID
+    inline int GetRcConsoleId() {
+        return 2; // RC_CONSOLE_NINTENDO_64
+    }
 
     constexpr int WINDOW_WIDTH = 1280;
     constexpr int WINDOW_HEIGHT = 720;

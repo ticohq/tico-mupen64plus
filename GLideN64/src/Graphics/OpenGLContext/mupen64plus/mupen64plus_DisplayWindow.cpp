@@ -75,6 +75,10 @@ bool DisplayWindowMupen64plus::_start()
 	_getDisplaySize();
 	_setBufferSize();
 
+	// The frontend made this thread's GL context current; load the entry
+	// points from it (the video mode itself is the frontend's).
+	initGLFunctions();
+
 	LOG(LOG_VERBOSE, "[GlideN64]: Create setting videomode %dx%d", m_screenWidth, m_screenHeight);
 	return true;
 }

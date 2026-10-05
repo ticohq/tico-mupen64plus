@@ -1,5 +1,5 @@
 /// @file TicoAudio.h
-/// @brief Reusable audio manager for Tico libretro frontend
+/// @brief Audio for the tico frontend
 /// Uses callback-based audio with ring buffer and resampling
 
 #pragma once
@@ -25,6 +25,7 @@ enum rsp_plugin_type
 extern enum rsp_plugin_type current_rsp_type;
 }
 #endif
+#include "TicoConfig.h"
 #include "TicoLogger.h"
 
 /// @brief Thread-safe lock-free SPSC ring buffer for audio samples
@@ -112,7 +113,7 @@ private:
     std::atomic<size_t> m_tail;
 };
 
-/// @brief Audio manager for libretro cores
+/// @brief Audio manager: the game's samples to SDL_mixer
 /// @details Uses Mix_HookMusic callback with ring buffer and optional resampling
 class TicoAudio
 {
@@ -315,22 +316,19 @@ public:
 
         m_coreSampleRate = coreSR;
 
-        if (m_resampler)
-        {
-            SDL_FreeAudioStream(m_resampler);
-            m_resampler = nullptr;
-        }
-
-        if (coreSR != SAMPLE_RATE)
-        {
-            m_resampler = SDL_NewAudioStream(
-                AUDIO_S16, CHANNELS, coreSR,
-                AUDIO_S16, CHANNELS, SAMPLE_RATE);
-            if (m_resampler)
-            {
-                LOG_AUDIO("Resampler created: %d -> %d Hz", coreSR, SAMPLE_RATE);
-            }
-        }
+        // the game changes rate from the emulation thread while SDL's
+        // callback reads the stream
+        SDL_AudioStream *next = coreSR != SAMPLE_RATE
+            ? SDL_NewAudioStream(AUDIO_S16, CHANNELS, coreSR, AUDIO_S16, CHANNELS, SAMPLE_RATE)
+            : nullptr;
+        SDL_LockAudio();
+        SDL_AudioStream *previous = m_resampler;
+        m_resampler = next;
+        SDL_UnlockAudio();
+        if (previous)
+            SDL_FreeAudioStream(previous);
+        if (next)
+            LOG_AUDIO("Resampler created: %d -> %d Hz", coreSR, SAMPLE_RATE);
     }
 
     /// Push a single audio sample (left, right)
@@ -338,6 +336,8 @@ public:
     {
         if (!m_initialized)
             return;
+        if (m_fastForward)
+            return; // fast-forwarded audio is dropped, not sped up
 
         if (TicoConfig::USE_SDLQUEUEAUDIO)
         {
@@ -363,6 +363,8 @@ public:
     {
         if (!m_initialized || !data || frames == 0)
             return 0;
+        if (m_fastForward)
+            return frames;
 
         size_t samplesNeeded = frames * CHANNELS;
 
@@ -405,6 +407,10 @@ public:
     /// Pause/unpause
     void SetPaused(bool paused) { m_paused = paused; }
     bool IsPaused() const { return m_paused; }
+
+    /// Enable/disable fast forward
+    void SetFastForward(bool ff) { m_fastForward = ff; }
+    bool IsFastForwarding() const { return m_fastForward; }
 
 private:
     /// @brief SDL_mixer pull callback — reads from ring buffer with optional resampling
@@ -493,6 +499,7 @@ private:
     SDL_AudioDeviceID m_deviceId;
     bool m_initialized;
     bool m_paused;
+    std::atomic<bool> m_fastForward{false};
     int m_coreSampleRate;
     std::atomic<uint32_t> m_underrunCount{0};
     uint64_t m_audioStallCount = 0; // emulation-thread only; counts backpressure drops

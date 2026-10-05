@@ -1,3 +1,9 @@
 [submodule "rcheevos"]
 	path = rcheevos
 	url = https://github.com/RetroAchievements/rcheevos.git
+[submodule "tico/deps/glslang"]
+	path = tico/deps/glslang
+	url = https://github.com/KhronosGroup/glslang.git
+[submodule "tico/deps/SPIRV-Reflect"]
+	path = tico/deps/SPIRV-Reflect
+	url = https://github.com/KhronosGroup/SPIRV-Reflect.git

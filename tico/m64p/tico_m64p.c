@@ -352,7 +352,7 @@ static void apply_startup_options(void)
    EnableTxCacheCompression = opt_flag(CORE_NAME "-txCacheCompression", "False", 1);
    txHiresFullAlphaChannel = opt_flag(CORE_NAME "-txHiresFullAlphaChannel", "False", 0);
    MaxHiResTxVramLimit = opt_int(CORE_NAME "-MaxHiResTxVramLimit", 0);
-   MaxTxCacheSize = opt_int(CORE_NAME "-MaxTxCacheSize", 8000);
+   MaxTxCacheSize = opt_int(CORE_NAME "-MaxTxCacheSize", 4000);
    enableLegacyBlending = opt_flag(CORE_NAME "-EnableLegacyBlending", "False", 0);
    EnableFragmentDepthWrite = opt_flag(CORE_NAME "-EnableFragmentDepthWrite", "False", 1);
    EnableShadersStorage = opt_flag(CORE_NAME "-EnableShadersStorage", "False", 1);
