@@ -11,7 +11,7 @@
 #   TICO_ENABLE_LOGGING 0 to build without sdmc:/tico/debug/mupen64plus.txt
 #   BUILD_JOBS          parallel jobs (default: all cores)
 
-SWITCH_DEV_IMAGE="${SWITCH_DEV_IMAGE:-ghcr.io/autorunhq/switch-dev:2026.10.01}"
+SWITCH_DEV_IMAGE="${SWITCH_DEV_IMAGE:-ghcr.io/autorunhq/switch-dev:2026.10.05}"
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 if [ ! -d /opt/devkitpro/devkitA64 ]; then
     MOUNTS=(-v "$ROOT_DIR:$ROOT_DIR")
