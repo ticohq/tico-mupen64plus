@@ -27,3 +27,6 @@ build_tico_standalone
 /stacks.txt
 /build_glslang_nx
 .tico_vulkan
+
+# a copy of the Switch config (sdmc:/tico/config/cores/), not part of the build
+/mupen64plus.jsonc
