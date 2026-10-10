@@ -30,3 +30,6 @@ build_tico_standalone
 
 # a copy of the Switch config (sdmc:/tico/config/cores/), not part of the build
 /mupen64plus.jsonc
+
+# TicoSecure build secret (shared with tico)
+/tico/TicoSecret.h

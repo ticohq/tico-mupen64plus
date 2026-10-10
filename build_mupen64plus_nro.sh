@@ -196,7 +196,7 @@ for lib in mesa_util_c11 blake3 mesa_util mesa_util_simd xmlconfig expat; do
     [ -f "$MESA_SDK/lib/lib$lib.a" ] && LIBS="$LIBS -l$lib"
 done
 [ -f "$MESA_SDK/lib/libdrm_nouveau.a" ] || [ -f "$PORTLIBS/lib/libdrm_nouveau.a" ] && LIBS="$LIBS -ldrm_nouveau"
-LIBS="$LIBS -lcurl -lmbedtls -lmbedx509 -lmbedcrypto -larchive -lbz2 -llzma -llz4 -lz -lzstd"
+LIBS="$LIBS -lcurl -lsodium -lmbedtls -lmbedx509 -lmbedcrypto -larchive -lbz2 -llzma -llz4 -lz -lzstd"
 LIBS="$LIBS -lusbhsfs -lusbntfs -lnx -lm -lstdc++ -lpthread"
 
 "$CXX" $LINK_FLAGS "${OBJS[@]}" "$CORE_LIB" "${GLSLANG_LIBS[@]}" \

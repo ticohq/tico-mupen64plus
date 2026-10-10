@@ -9,6 +9,7 @@
 /// paraLLEl-RDP on Vulkan, or GLideN64 on OpenGL (NVC0 or Zink).
 
 #include "TicoAudio.h"
+#include "TicoSession.h"
 #include "TicoConfig.h"
 #include "TicoCore.h"
 #include "TicoGL.h"
@@ -1410,7 +1411,7 @@ static std::string WithSlash(std::string path)
 static std::vector<std::string> TicoRomBases()
 {
     std::vector<std::string> bases;
-    std::ifstream file("sdmc:/tico/config/general.jsonc");
+    tico::SettingsStream file("general");
     const nlohmann::json j = file.good() ? nlohmann::json::parse(file, nullptr, false, true) : nlohmann::json();
     std::string roms = j.is_object() ? j.value("roms_path", std::string()) : std::string();
     bases.push_back(WithSlash(roms.empty() ? "sdmc:/tico/roms/" : roms));

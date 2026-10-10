@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "overlay/tico_config.h"
+#include "../TicoSession.h"
 
 #include <algorithm>
 #include <array>
@@ -604,7 +605,7 @@ void ReloadConfig() {
 
 int BorderTint() {
     std::string content;
-    if (!ReadWholeFile("sdmc:/tico/config/display.jsonc", content)) {
+    if (!tico::ReadSettings("display", content)) {
         return 0;
     }
     const nlohmann::json root = nlohmann::json::parse(StripJsonComments(content), nullptr, false);
@@ -617,7 +618,7 @@ int BorderTint() {
 
 bool DarkMode() {
     std::string content;
-    if (!ReadWholeFile("sdmc:/tico/config/display.jsonc", content)) {
+    if (!tico::ReadSettings("display", content)) {
         return false;
     }
     const nlohmann::json root = nlohmann::json::parse(StripJsonComments(content), nullptr, false);
@@ -626,7 +627,7 @@ bool DarkMode() {
 
 std::string ResumeOnLaunch() {
     std::string content;
-    if (!ReadWholeFile("sdmc:/tico/config/general.jsonc", content)) {
+    if (!tico::ReadSettings("general", content)) {
         return "ask";
     }
     const nlohmann::json root = nlohmann::json::parse(StripJsonComments(content), nullptr, false);

@@ -98,6 +98,10 @@ void Render(TicoCore *core, ImDrawList *dl, ImVec2 displaySize, float deltaTime)
         n.textureId = core->m_raIconTexture;
       } else {
         n.textureId = core->GetRABadgeTexture(n.badge_name);
+        if (n.textureId == ImTextureID_Invalid) { // Not fetched by tico: placeholder
+          n.badge_name = "ra_icon";
+          n.textureId = core->m_raIconTexture;
+        }
       }
     }
 

@@ -271,8 +271,6 @@ public:
     std::map<std::string, ImTextureID> m_raBadgeCache;
     ImTextureID m_raIconTexture = ImTextureID_Invalid; // ra.svg icon
     ImTextureID GetRABadgeTexture(const std::string& badge_name);
-    void DownloadAndCacheBadge(const std::string& badge_name); // runs on worker
-    void PreloadRABadges();                   // called after game identification
 
 public:
     // RA Worker Thread (persistent, proper libnx lifecycle)
