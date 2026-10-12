@@ -925,6 +925,7 @@ void TicoCore::UnloadGame()
     tico_debug_log("Stopping the emulator...");
     tico_m64p_stop();
     m_started = false;
+    tico::PlaytimeFlush();
     {
         // the emulator has stopped: write what the block holds now
         std::lock_guard<std::mutex> lock(m_savesMutex);
@@ -980,6 +981,7 @@ void TicoCore::RunRACallbacks()
 
 void TicoCore::OnFrame()
 {
+    tico::PlaytimeFrame(); // this frame's time to the player's playtime
     CheckSavesChanged();
     if (!m_rcClient)
         return;
