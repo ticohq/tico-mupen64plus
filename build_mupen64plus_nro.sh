@@ -208,7 +208,7 @@ LIBS="$LIBS -lusbhsfs -lusbntfs -lnx -lm -lstdc++ -lpthread"
 echo "--- Step 6: NRO ---"
 NRO="$BUILD_DIR/tico-mupen64plus.nro"
 NACP="$BUILD_DIR/tico-mupen64plus.nacp"
-"$DEVKITPRO/tools/bin/nacptool" --create "tico Mupen64Plus" "ticoverse.com" "$APP_VERSION" "$NACP"
+"$DEVKITPRO/tools/bin/nacptool" --create "tico-mupen64plus" "Mupen64Plus Team/ticoverse.com" "$APP_VERSION" "$NACP"
 
 # Without Vulkan, the settings leave out what only it runs: the renderer
 # choice, paraLLEl-RDP's tab and paraLLEl-RSP's audio option.
@@ -242,7 +242,7 @@ cp -R "$TICO_DIR/fonts" "$TICO_DIR/lang" "$TICO_DIR/assets" "$ROMFS/"
 [ $VULKAN -eq 1 ] && cp -R "$TICO_DIR/shaders" "$ROMFS/"
 # the overlay builds its settings menu from the module's own definition
 cp "$SETTINGS" "$ROMFS/module/"
-"$DEVKITPRO/tools/bin/elf2nro" "$ELF" "$NRO" --nacp="$NACP" --romfsdir="$ROMFS"
+"$DEVKITPRO/tools/bin/elf2nro" "$ELF" "$NRO" --nacp="$NACP" --icon="$ROOT_DIR/tico/icon.jpg" --romfsdir="$ROMFS"
 
 #------------------------------------------------------------------------------
 # Module bundle
