@@ -21,7 +21,7 @@
         ".7z",
         ".rar"
       ],
-      "games_file": "n64.json",
+      "games_file": "n64.dat",
       "retroachievements_id": 2,
       "colors": {
         "start": "4FD97A",
