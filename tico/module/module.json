@@ -5,6 +5,7 @@
   "launch": "\"{nro}\" \"{slug}\" \"{rom}\" \"{title}\"",
   "settings": "config/modules/mupen64plus/settings.json",
   "config_file": "mupen64plus.jsonc",
+  "system_dir": "mupen64plus",
   "is_libretro": false,
   "achievements": true,
   "systems": [
