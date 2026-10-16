@@ -34,6 +34,17 @@ Vulkan works too: built against a newer Mesa with NVK, the same code runs paraLL
 
 ----------
 
+## Credits
+
+This fork is built on top of Mupen64Plus-Next, the libretro core combining Mupen64Plus with GLideN64.
+All core emulation work belongs to the Mupen64Plus, GLideN64 and libretro teams and their contributors.
+
+- **libretro Mupen64Plus-Next** — https://github.com/libretro/mupen64plus-libretro-nx
+- **Mupen64Plus** — https://github.com/mupen64plus
+- **GLideN64** — https://github.com/gonetz/GLideN64
+
+----------
+
 ## A Note
 
 A lot of work in this scene disappears over time — not because it lacked value, but because it was never shared.
