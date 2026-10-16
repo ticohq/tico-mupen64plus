@@ -686,6 +686,8 @@ static void OpenMenu();
 static void OfferResume()
 {
     g_offerResume = false;
+    // tico's General > Quick Menu Tip: shown once the game runs smoothly
+    OverlayUI::ShowQuickMenuTip();
     struct stat st;
     if (!g_core || g_core->IsHardcoreActive() ||
         stat(StatePath(OverlayUI::kAutoStateSlot - 1).c_str(), &st) != 0)
